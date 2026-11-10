@@ -50,7 +50,7 @@ namespace AppMonitor
         Point mouse = new Point(-1, -1);
         enum Drag { None, Select, Pan, Overview }
         Drag drag;
-        int dragX; long dragT, dragViewStart;
+        int dragX; long dragT, dragViewStart, grabOffset;
         long ovStart, ovEnd;
 
         public TimelineControl()
@@ -126,6 +126,13 @@ namespace AppMonitor
         {
             long span = Math.Max(b - a, TimeSpan.FromSeconds(20).Ticks);
             span = Math.Min(span, TimeSpan.FromDays(60).Ticks);
+            // keep the view on the recording: never scroll off into empty time
+            if (trace != null && trace.GetExtent(out long s, out long e))
+            {
+                long pad = span / 40;
+                if (span >= e - s) a = e + pad - span;   // whole recording fits: newest data on the right
+                else a = Math.Max(s - pad, Math.Min(a, e + pad - span));
+            }
             ViewStart = a; ViewEnd = a + span;
             dirty = true; Invalidate();
             ViewChanged?.Invoke(this, EventArgs.Empty);
@@ -304,9 +311,9 @@ namespace AppMonitor
             var ov = new float[Math.Max(1, overview.Width)];
             var ss = trace.Samples;
             if (ss.Count == 0) { ovStart = ViewStart; ovEnd = ViewEnd; return ov; }
-            ovStart = Math.Min(ss[0].StartTicks, ViewStart);
-            ovEnd = Math.Max(ss[ss.Count - 1].Ticks, ViewEnd);
-            if (ovEnd <= ovStart) ovEnd = ovStart + 1;
+            // the strip always maps exactly the recording (independent of the current view)
+            ovStart = ss[0].StartTicks;
+            ovEnd = Math.Max(ss[ss.Count - 1].Ticks, ovStart + TimeSpan.TicksPerMinute);
             double scale = ov.Length / (double)(ovEnd - ovStart);
             for (int i = 0; i < ss.Count; i++)
             {
@@ -608,11 +615,20 @@ namespace AppMonitor
             using (var b = new SolidBrush(Color.FromArgb(0xA8, 0xB8, 0xCC)))
                 for (int i = 0; i < ov.Length; i++)
                     if (ov[i] > 0) { float h = ov[i] / 100f * (overview.Height - 2); g.FillRectangle(b, overview.Left + i, overview.Bottom - h, 1, h); }
-            float x0 = OvX(ViewStart), x1 = OvX(ViewEnd);
-            using (var v = new SolidBrush(Color.FromArgb(40, 0x4E, 0x79, 0xA7))) g.FillRectangle(v, x0, overview.Top, Math.Max(2, x1 - x0), overview.Height);
-            using (var p = new Pen(Color.FromArgb(0x4E, 0x79, 0xA7))) g.DrawRectangle(p, x0, overview.Top, Math.Max(2, x1 - x0), overview.Height - 1);
-            DrawText(g, "overview", Font, new Point(overview.Right + 4, overview.Top), Muted,
-                TextFormatFlags.WordBreak);
+            float x0 = Math.Max(overview.Left, OvX(ViewStart)), x1 = Math.Min(overview.Right - 1, OvX(ViewEnd));
+            using (var v = new SolidBrush(Color.FromArgb(45, 0x4E, 0x79, 0xA7))) g.FillRectangle(v, x0, overview.Top, Math.Max(3, x1 - x0), overview.Height);
+            using (var p = new Pen(Color.FromArgb(0x4E, 0x79, 0xA7), 2)) g.DrawRectangle(p, x0, overview.Top + 1, Math.Max(3, x1 - x0), overview.Height - 2);
+
+            // labels: what this is, and the time span it covers
+            using var bold = new Font(Font, FontStyle.Bold);
+            DrawText(g, "Whole recording", bold, new Point(8, overview.Top), Ink);
+            DrawText(g, "drag the box to scroll", Font, new Point(8, overview.Top + bold.Height), Muted);
+            if (trace.Samples.Count > 0)
+            {
+                string fmt = ovEnd - ovStart > TimeSpan.TicksPerDay ? "ddd HH:mm" : "HH:mm:ss";
+                DrawText(g, new DateTime(ovStart, DateTimeKind.Utc).ToLocalTime().ToString(fmt), Font, new Point(overview.Left + 3, overview.Top + 2), Muted);
+                DrawText(g, new DateTime(ovEnd, DateTimeKind.Utc).ToLocalTime().ToString(fmt), Font, new Point(overview.Right + 4, overview.Top + 2), Muted);
+            }
         }
 
         float OvX(long t) => overview.Left + (float)((t - ovStart) / (double)Math.Max(1, ovEnd - ovStart) * overview.Width);
@@ -641,6 +657,15 @@ namespace AppMonitor
                     using var sp = new Pen(Color.FromArgb(140, 0x4E, 0x79, 0xA7));
                     g.DrawLine(sp, a, plot.Top, a, plot.Bottom); g.DrawLine(sp, b, plot.Top, b, plot.Bottom);
                 }
+            }
+
+            if (trace.IsLive && !follow)
+            {
+                const string msg = "⏸ Paused on history: press ⏵ Live, or drag the box to the right end, to follow again";
+                var sz = g.MeasureString(msg, Font);
+                var box = new RectangleF(plot.Right - sz.Width - 10, 1, sz.Width + 8, sz.Height + 2);
+                using (var bb = new SolidBrush(Color.FromArgb(0xFF, 0xF4, 0xCE))) g.FillRectangle(bb, box);
+                using (var tb = new SolidBrush(Color.FromArgb(0x7A, 0x5B, 0x00))) g.DrawString(msg, Font, tb, box.X + 4, box.Y + 1);
             }
 
             if (plot.Contains(mouse) && drag != Drag.Pan)
@@ -716,7 +741,16 @@ namespace AppMonitor
         {
             Focus();
             if (trace == null) return;
-            if (overview.Contains(e.Location)) { drag = Drag.Overview; CenterOn(OvTime(e.X)); return; }
+            if (overview.Contains(e.Location))
+            {
+                // grab the box where it was clicked; clicking outside the box jumps it there first
+                long t = OvTime(e.X), span = ViewEnd - ViewStart;
+                Follow = false;
+                if (t >= ViewStart && t <= ViewEnd) grabOffset = t - ViewStart;
+                else { grabOffset = span / 2; SetView(t - grabOffset, t - grabOffset + span); }
+                drag = Drag.Overview;
+                return;
+            }
             if (!plot.Contains(e.Location)) return;
             if (e.Button == MouseButtons.Left) { drag = Drag.Select; dragX = e.X; dragT = TimeAt(e.X); }
             else if (e.Button == MouseButtons.Right || e.Button == MouseButtons.Middle)
@@ -744,7 +778,8 @@ namespace AppMonitor
                     SetView(dragViewStart - delta, dragViewStart - delta + span);
                     return;
                 case Drag.Overview:
-                    CenterOn(OvTime(Math.Max(overview.Left, Math.Min(overview.Right, e.X))));
+                    long t0 = OvTime(Math.Max(overview.Left, Math.Min(overview.Right, e.X))) - grabOffset;
+                    SetView(t0, t0 + (ViewEnd - ViewStart));
                     return;
             }
             Invalidate();
@@ -774,6 +809,15 @@ namespace AppMonitor
                     if (b > a) Select(a, b);
                 }
                 else SelectionChanged?.Invoke(this, EventArgs.Empty);
+            }
+            else if ((drag == Drag.Pan || drag == Drag.Overview) && trace.IsLive && trace.GetExtent(out _, out long end)
+                     && ViewEnd >= end - (ViewEnd - ViewStart) / 50)
+            {
+                // scrolled back to the newest data: resume live follow with the current zoom
+                WindowTicks = ViewEnd - ViewStart;
+                drag = Drag.None;
+                Follow = true;
+                return;
             }
             drag = Drag.None;
             Invalidate();

@@ -385,7 +385,7 @@ namespace AppMonitor
             if (t == null || t != liveTrace || t.Version == lastVersion) return;
             bool firstData = lastVersion <= 0;
             lastVersion = t.Version;
-            if (timeline.Follow) timeline.DataChanged();
+            timeline.DataChanged(); // also while paused on history: the overview and any visible recent data keep updating
             // refresh as soon as data first arrives, then at most every ~3 s / ~5 s
             if (!timeline.HasSelection && timeline.Follow && (firstData || tick - lastTableTick >= 3)) { lastTableTick = tick; RefreshTable(); }
             if (firstData || tick - lastEpisodeTick >= 5) { lastEpisodeTick = tick; RefreshEpisodes(); }
