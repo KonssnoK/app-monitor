@@ -15,6 +15,16 @@ namespace AppMonitor
         public string Display => display ??= string.IsNullOrEmpty(Services) ? Name : Name + " [" + Services + "]";
     }
 
+    enum SensorKind : byte { Fan = 1, Temp = 2 }
+
+    /// <summary>A hardware sensor recorded in the trace (fan RPM or temperature °C).</summary>
+    sealed class SensorDef
+    {
+        public int Index;
+        public SensorKind Kind;
+        public string Name = "";
+    }
+
     struct ProcSample
     {
         public int Key;
@@ -32,6 +42,8 @@ namespace AppMonitor
         public float DiskReadBps, DiskWriteBps, DiskActivePct, NetBps;
         public float TempC = float.NaN, CpuClockPct = float.NaN;
         public ProcSample[] Procs = Array.Empty<ProcSample>();
+        /// <summary>Values for Trace.Sensors (same order), or null when no sensors were read.</summary>
+        public float[] Sensors;
 
         public long StartTicks => Ticks - (long)(IntervalSec * TimeSpan.TicksPerSecond);
     }
@@ -41,6 +53,9 @@ namespace AppMonitor
         public readonly object Sync = new object();
         public readonly List<Sample> Samples = new List<Sample>();
         public readonly Dictionary<int, ProcInfo> Procs = new Dictionary<int, ProcInfo>();
+        public readonly List<SensorDef> Sensors = new List<SensorDef>();
+        public bool HasFans => Sensors.Exists(d => d.Kind == SensorKind.Fan);
+        public bool HasTempSensors => Sensors.Exists(d => d.Kind == SensorKind.Temp);
         public string Machine = Environment.MachineName;
         public int CpuCount = Environment.ProcessorCount;
         public long TotalMemBytes;

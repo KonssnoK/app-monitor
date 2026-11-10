@@ -16,12 +16,12 @@ It runs in the tray and records CPU, GPU, disk, memory, network, CPU clock boost
 - **Traces are always saved**:
   - Recording streams to `traces\trace_<date>.amtrace` next to the exe, in crash-safe compressed chunks.
   - Use **Open…** to load old traces and **Save as…** to copy one. **Export CSV…** exports the table.
-- **Portable**: a single `AppMonitor.exe` (~100 KB) for .NET Framework 4.8, which ships with Windows 10/11. No install is needed.
+- **Portable**: a single `AppMonitor.exe` (~3 MB, libraries embedded) for .NET Framework 4.8, which ships with Windows 10/11. No install is needed.
 - **Light on resources**:
   - One kernel call per sample collects data for every process.
   - Per-process details are looked up once per process, and only for processes that matter.
   - It runs at below-normal priority with EcoQoS and stops drawing while hidden.
-  - Typical cost is around 0.1% CPU and about 30 MB RAM. Traces take about 0.5 MB per hour at the 2 s interval.
+  - Typical cost is around 0.1% CPU and 40–60 MB RAM (including the sensor library). Traces take about 0.5 MB per hour at the 2 s interval.
 
 ## Usage
 
@@ -35,9 +35,19 @@ AppMonitor.exe some.amtrace     open a trace
 - **More → Start with Windows** registers `--record --tray` at logon, so it is always recording when the fan goes off.
 - **More → Restart as administrator** shows users and command lines for system processes as well. CPU/IO numbers for all processes are collected either way.
 
-## Notes on fans and temperature
+## Fan speed and temperatures
 
-Windows does not expose fan RPM in any standard way. The fan is driven by the embedded controller and responds to heat. The app records the closest available signals: CPU clock boost (above 100% means turbo, which means heat), CPU/GPU load, and the ACPI thermal zone temperature. On many machines the thermal-zone value is fake or constant, so treat it as a hint.
+Windows has no standard fan-speed API. The app reads fan speeds and temperatures through the bundled [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) library:
+
+| Sensors | Needs |
+|---|---|
+| GPU fans and GPU temperature (NVIDIA/AMD) | nothing, works as a normal user |
+| Motherboard fans (CPU fan, case fans) and real CPU temperature | administrator rights **and** the [PawnIO](https://pawnio.eu) driver (one-time install) |
+
+- The status bar shows which sensors were found. **More → Get the PawnIO driver…** explains how to install it.
+- Busy periods show the fastest fan speed during each period.
+- GPUs stop their fans completely when cool ("zero-RPM" mode), so "stopped" at idle is normal.
+- Without any sensors, the app falls back to the ACPI thermal zone temperature. That value is often fake.
 
 ## Build
 

@@ -11,13 +11,13 @@ namespace AppMonitor
     /// File format (.amtrace):
     ///   "AMTRACE1" magic, header (BinaryWriter), then a sequence of chunks: [int32 length][gzip(records)].
     /// Each chunk is independently compressed, so a crash or power loss only loses the last unflushed chunk.
-    /// Records: 1 = ProcInfo, 2 = Sample.
+    /// Records: 1 = ProcInfo, 2 = Sample, 3 = SensorDef, 4 = sensor values for the preceding sample.
     /// </summary>
     static class TraceFile
     {
         public const string Extension = ".amtrace";
         static readonly byte[] Magic = Encoding.ASCII.GetBytes("AMTRACE1");
-        const byte RecProc = 1, RecSample = 2;
+        const byte RecProc = 1, RecSample = 2, RecSensorDef = 3, RecSensorValues = 4;
 
         public static void WriteHeader(Stream s, Trace t)
         {
@@ -36,6 +36,12 @@ namespace AppMonitor
             w.Write(p.CommandLine ?? ""); w.Write(p.Services ?? "");
         }
 
+        public static void WriteSensorDef(BinaryWriter w, SensorDef d)
+        {
+            w.Write(RecSensorDef);
+            w.Write((byte)d.Index); w.Write((byte)d.Kind); w.Write(d.Name ?? "");
+        }
+
         public static void WriteSample(BinaryWriter w, Sample s)
         {
             w.Write(RecSample);
@@ -47,6 +53,12 @@ namespace AppMonitor
             foreach (var p in s.Procs)
             {
                 w.Write(p.Key); w.Write(p.Cpu); w.Write(p.Gpu); w.Write(p.ReadBps); w.Write(p.WriteBps); w.Write(p.MemMB);
+            }
+            if (s.Sensors != null)
+            {
+                w.Write(RecSensorValues);
+                w.Write((byte)s.Sensors.Length);
+                foreach (var v in s.Sensors) w.Write(v);
             }
         }
 
@@ -64,14 +76,15 @@ namespace AppMonitor
         /// <summary>Writes a complete snapshot of a trace (used by "Save as").</summary>
         public static void Save(Trace t, string path)
         {
-            List<Sample> samples; List<ProcInfo> procs;
-            lock (t.Sync) { samples = new List<Sample>(t.Samples); procs = new List<ProcInfo>(t.Procs.Values); }
+            List<Sample> samples; List<ProcInfo> procs; List<SensorDef> sensors;
+            lock (t.Sync) { samples = new List<Sample>(t.Samples); procs = new List<ProcInfo>(t.Procs.Values); sensors = new List<SensorDef>(t.Sensors); }
             string tmp = path + ".tmp";
             using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
             {
                 WriteHeader(fs, t);
                 var ms = new MemoryStream();
                 var bw = new BinaryWriter(ms, Encoding.UTF8);
+                foreach (var d in sensors) WriteSensorDef(bw, d);
                 foreach (var p in procs) WriteProc(bw, p);
                 for (int i = 0; i < samples.Count; i++)
                 {
@@ -149,6 +162,19 @@ namespace AppMonitor
                     t.Samples.Add(s);
                     if (!float.IsNaN(s.TempC)) t.HasTemp = true;
                 }
+                else if (tag == RecSensorDef)
+                {
+                    var d = new SensorDef { Index = r.ReadByte(), Kind = (SensorKind)r.ReadByte(), Name = r.ReadString() };
+                    while (t.Sensors.Count <= d.Index) t.Sensors.Add(new SensorDef { Index = t.Sensors.Count });
+                    t.Sensors[d.Index] = d;
+                }
+                else if (tag == RecSensorValues)
+                {
+                    int n = r.ReadByte();
+                    var v = new float[n];
+                    for (int i = 0; i < n; i++) v[i] = r.ReadSingle();
+                    if (t.Samples.Count > 0) t.Samples[t.Samples.Count - 1].Sensors = v;
+                }
                 else throw new InvalidDataException("Unknown record " + tag);
             }
         }
@@ -174,6 +200,7 @@ namespace AppMonitor
         }
 
         public void Proc(ProcInfo p) => TraceFile.WriteProc(bw, p);
+        public void Sensor(SensorDef d) => TraceFile.WriteSensorDef(bw, d);
 
         public void Sample(Sample s)
         {

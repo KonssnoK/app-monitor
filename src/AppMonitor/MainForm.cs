@@ -41,6 +41,7 @@ namespace AppMonitor
         // status
         readonly ToolStripStatusLabel lblState = new ToolStripStatusLabel { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
         readonly ToolStripStatusLabel lblOverhead = new ToolStripStatusLabel();
+        readonly ToolStripStatusLabel lblSensors = new ToolStripStatusLabel { ForeColor = Color.DimGray };
 
         readonly NotifyIcon tray = new NotifyIcon();
         readonly Timer uiTimer = new Timer { Interval = 1000 };
@@ -111,6 +112,14 @@ namespace AppMonitor
             startup.Click += (s, e) => SetStartup(startup.Checked);
             more.DropDownItems.Add(startup);
             more.DropDownOpening += (s, e) => startup.Checked = IsStartupEnabled();
+            more.DropDownItems.Add("Get the PawnIO driver (motherboard fan speeds & CPU temperature)…", null, (s, e) =>
+            {
+                if (MessageBox.Show(this, "Motherboard fan speeds and the real CPU temperature are read from the motherboard's monitoring chip, " +
+                    "which needs administrator rights and the PawnIO driver (signed, open source, used by LibreHardwareMonitor).\n\n" +
+                    "Install it from https://pawnio.eu, then use \"Restart as administrator\".\n\nOpen the website now?",
+                    "AppMonitor", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                    Process.Start(new ProcessStartInfo("https://pawnio.eu") { UseShellExecute = true });
+            });
             if (!IsElevated())
                 more.DropDownItems.Add("Restart as administrator (shows users/command lines of system processes)", null, (s, e) => RestartElevated());
             more.DropDownItems.Add(new ToolStripSeparator());
@@ -129,7 +138,7 @@ namespace AppMonitor
             // left: busy periods
             episodesList.Columns.Add("When", 118);
             episodesList.Columns.Add("Length", 60);
-            episodesList.Columns.Add("Peak", 70);
+            episodesList.Columns.Add("Peak", 120);
             episodesList.Columns.Add("Main culprits", 320);
             episodesList.MultiSelect = false;
             episodesList.ShowItemToolTips = true;
@@ -198,7 +207,7 @@ namespace AppMonitor
             main.Panel2.Controls.Add(right);
 
             var status = new StatusStrip { SizingGrip = true };
-            status.Items.AddRange(new ToolStripItem[] { lblState, lblOverhead });
+            status.Items.AddRange(new ToolStripItem[] { lblState, lblSensors, lblOverhead });
 
             Controls.Add(main);
             Controls.Add(tools);
@@ -405,6 +414,7 @@ namespace AppMonitor
                 state += $"  |  {n:N0} samples";
             }
             lblState.Text = state;
+            lblSensors.Text = collector.Running && collector.SensorStatus.Length > 0 ? "Sensors: " + collector.SensorStatus + "  |" : "";
             lblOverhead.Text = collector.Running
                 ? $"AppMonitor's own usage: CPU {collector.SelfCpu:0.0}%  RAM {collector.SelfMemMB:0} MB  (sample took {collector.LastSampleMs:0} ms)"
                 : "Not recording — using no resources";
@@ -426,8 +436,10 @@ namespace AppMonitor
                 var local = new DateTime(ep.Start, DateTimeKind.Utc).ToLocalTime();
                 string when = local.Date == DateTime.Today ? local.ToString("HH:mm:ss") : local.ToString("ddd d MMM HH:mm");
                 string peak = ep.PeakGpu > ep.PeakCpu ? $"GPU {ep.PeakGpu:0}%" : $"CPU {ep.PeakCpu:0}%";
+                if (ep.PeakFan > 0) peak += $" · {ep.PeakFan:0} rpm";
                 var it = new ListViewItem(new[] { when, Analysis.Duration(ep.DurationSec), peak, ep.Culprits }) { Tag = ep };
-                it.ToolTipText = $"avg CPU {ep.AvgCpu:0}% · avg GPU {ep.AvgGpu:0}%" + (float.IsNaN(ep.PeakTemp) ? "" : $" · peak temp {ep.PeakTemp:0}°C") + "\n" + ep.Culprits;
+                it.ToolTipText = $"avg CPU {ep.AvgCpu:0}% · avg GPU {ep.AvgGpu:0}%" + (float.IsNaN(ep.PeakTemp) ? "" : $" · peak temp {ep.PeakTemp:0}°C")
+                    + (ep.PeakFan > 0 ? $" · fastest fan {ep.PeakFan:0} rpm ({ep.PeakFanName})" : "") + "\n" + ep.Culprits;
                 episodesList.Items.Add(it);
                 if (selected == ep.Start) it.Selected = true;
             }

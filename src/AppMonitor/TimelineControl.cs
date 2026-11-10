@@ -14,7 +14,7 @@ namespace AppMonitor
     /// </summary>
     sealed class TimelineControl : Control
     {
-        enum Lane { Cpu, Gpu, Disk, Mem, Clock, Temp, Net }
+        enum Lane { Cpu, Gpu, Fan, Temp, Disk, Mem, Clock, Net }
 
         static readonly Color[] Palette =
         {
@@ -161,9 +161,10 @@ namespace AppMonitor
             plot = new Rectangle(gutter, axisH, Math.Max(10, Width - gutter - 58), Math.Max(10, Height - axisH - ovH - 12));
             overview = new Rectangle(plot.Left, plot.Bottom + 8, plot.Width, ovH);
 
-            var defs = new List<(Lane, float)> { (Lane.Cpu, 3f), (Lane.Gpu, 2f), (Lane.Disk, 1.4f), (Lane.Mem, 1f), (Lane.Clock, 1f) };
-            if (trace != null && trace.HasTemp) defs.Add((Lane.Temp, 1f));
-            defs.Add((Lane.Net, 1f));
+            var defs = new List<(Lane, float)> { (Lane.Cpu, 3f), (Lane.Gpu, 2f) };
+            if (trace != null && trace.HasFans) defs.Add((Lane.Fan, 1.8f));
+            if (trace != null && (trace.HasTempSensors || trace.HasTemp)) defs.Add((Lane.Temp, trace.HasTempSensors ? 1.5f : 1f));
+            defs.AddRange(new[] { (Lane.Disk, 1.4f), (Lane.Mem, 1f), (Lane.Clock, 1f), (Lane.Net, 1f) });
             float total = defs.Sum(d => d.Item2);
             const int gap = 5;
             // Tracealyzer-style split: system graphs on top, one swimlane per process below
@@ -199,6 +200,7 @@ namespace AppMonitor
             public float[][] RowS;   // per-process activity: max(cpu, gpu)
             public double[] RowAvg;
             public float[] Ov; // overview: max cpu per pixel
+            public float[][] Sens; // per hardware sensor (fan rpm / temp), max within bucket
         }
 
         Frame BuildFrame()
@@ -245,6 +247,7 @@ namespace AppMonitor
                 f.Cpu = new float[cap]; f.Gpu = new float[cap]; f.Mem = new float[cap]; f.DiskR = new float[cap]; f.DiskW = new float[cap];
                 f.Net = new float[cap]; f.Temp = new float[cap]; f.Clock = new float[cap];
                 f.HiCpu = new float[cap]; f.HiGpu = new float[cap]; f.HiIo = new float[cap];
+                f.Sens = new float[trace.Sensors.Count][]; for (int k = 0; k < f.Sens.Length; k++) f.Sens[k] = new float[cap];
                 f.CpuS = new float[f.CpuNames.Length][]; for (int k = 0; k < f.CpuS.Length; k++) f.CpuS[k] = new float[cap];
                 f.GpuS = new float[f.GpuNames.Length][]; for (int k = 0; k < f.GpuS.Length; k++) f.GpuS[k] = new float[cap];
                 f.RowS = new float[f.RowNames.Length][]; for (int k = 0; k < f.RowS.Length; k++) f.RowS[k] = new float[cap];
@@ -263,6 +266,7 @@ namespace AppMonitor
                         cur++;
                         f.X[cur] = bucket ? pix + 0.5f : x; f.Brk[cur] = brk;
                         f.Temp[cur] = float.NaN; f.Clock[cur] = float.NaN;
+                        foreach (var a in f.Sens) a[cur] = float.NaN;
                     }
                     lastPix = pix;
                     cnt[cur]++;
@@ -273,6 +277,12 @@ namespace AppMonitor
                     f.Net[cur] = Math.Max(f.Net[cur], s.NetBps);
                     if (!float.IsNaN(s.TempC) && !(f.Temp[cur] >= s.TempC)) f.Temp[cur] = s.TempC;
                     if (!float.IsNaN(s.CpuClockPct) && !(f.Clock[cur] >= s.CpuClockPct)) f.Clock[cur] = s.CpuClockPct;
+                    if (s.Sensors != null)
+                        for (int k = 0; k < s.Sensors.Length && k < f.Sens.Length; k++)
+                        {
+                            float v = s.Sensors[k];
+                            if (!float.IsNaN(v) && !(f.Sens[k][cur] >= v)) f.Sens[k][cur] = v;
+                        }
                     // per-process series: averaged within bucket
                     foreach (var p in s.Procs)
                     {
@@ -424,9 +434,21 @@ namespace AppMonitor
                     { float y = r.Bottom - 100 / max * r.Height; g.DrawLine(p, r.Left, y, r.Right, y); }
                     DrawLine(g, r, f, f.Clock, max, Palette[5], 1.4f);
                     break;
+                case Lane.Fan:
+                    max = NiceMax(SensorMax(f, SensorKind.Fan), 1000); title = "Fans (RPM)"; unitMax = $"{max:0}";
+                    DrawSensors(g, r, f, SensorKind.Fan, max, legend, " rpm");
+                    break;
                 case Lane.Temp:
-                    max = Math.Max(100, NiceMax(MaxOf(f.Temp, f.N), 10)); title = "Temperature (ACPI thermal zone)"; unitMax = $"{max:0}°C";
-                    DrawLine(g, r, f, f.Temp, max, Palette[2], 1.6f);
+                    if (trace.HasTempSensors)
+                    {
+                        max = Math.Max(100, NiceMax(SensorMax(f, SensorKind.Temp), 10)); title = "Temperature (°C, peak in view)"; unitMax = $"{max:0}°C";
+                        DrawSensors(g, r, f, SensorKind.Temp, max, legend, "°C");
+                    }
+                    else
+                    {
+                        max = Math.Max(100, NiceMax(MaxOf(f.Temp, f.N), 10)); title = "Temperature (ACPI thermal zone — often inaccurate)"; unitMax = $"{max:0}°C";
+                        DrawLine(g, r, f, f.Temp, max, Palette[2], 1.6f);
+                    }
                     break;
                 default:
                     max = NiceMax(MaxOf(f.Net, f.N), 128 * 1024); title = "Network"; unitMax = Analysis.Bytes(max) + "/s";
@@ -452,6 +474,36 @@ namespace AppMonitor
                 x += sz.Width + 16;
             }
             DrawText(g, unitMax, Font, new Point(r.Right + 4, r.Top - 2), Muted);
+        }
+
+        float SensorMax(Frame f, SensorKind kind)
+        {
+            float m = 0;
+            if (f.Sens == null) return m;
+            for (int k = 0; k < f.Sens.Length; k++)
+                if (trace.Sensors[k].Kind == kind) m = Math.Max(m, MaxOf(f.Sens[k], f.N));
+            return m;
+        }
+
+        /// <summary>One line per sensor of this kind that has data in view (disconnected fans reading 0 are skipped).</summary>
+        void DrawSensors(Graphics g, Rectangle r, Frame f, SensorKind kind, float max, List<(Color, string)> legend, string unit)
+        {
+            int ci = 0;
+            if (f.Sens == null) return;
+            for (int k = 0; k < f.Sens.Length; k++)
+            {
+                if (trace.Sensors[k].Kind != kind) continue;
+                var v = f.Sens[k];
+                bool hasData = false;
+                for (int i = 0; i < f.N && !hasData; i++) hasData = !float.IsNaN(v[i]);
+                if (!hasData) continue;
+                float peak = MaxOf(v, f.N);
+                var c = Palette[ci++ % Palette.Length];
+                DrawLine(g, r, f, v, max, c, 1.5f);
+                // GPUs stop their fans entirely at low load (zero-RPM mode): say so instead of hiding the fan
+                string val = kind == SensorKind.Fan && peak <= 0 ? "stopped" : $"{peak:0}{unit}";
+                legend.Add((c, $"{trace.Sensors[k].Name} {val}"));
+            }
         }
 
         static string Short(string s) => s.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? s.Substring(0, s.Length - 4) : s;
@@ -636,7 +688,18 @@ namespace AppMonitor
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            if (dirty || cache == null || cache.Width != Width || cache.Height != Height) RenderCache();
+            if (dirty || cache == null || cache.Width != Width || cache.Height != Height)
+            {
+                try { RenderCache(); }
+                catch (Exception ex)
+                {
+                    // never let a drawing bug turn the control into WinForms' permanent red X
+                    e.Graphics.Clear(BackColor);
+                    e.Graphics.DrawString("Chart error: " + ex.Message, Font, Brushes.DarkRed, 10, 10);
+                    dirty = true;
+                    return;
+                }
+            }
             // 1:1 pixel copy; DrawImageUnscaled would rescale by bitmap-vs-screen DPI on scaled displays and smear text
             var gs = e.Graphics.Save();
             e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
@@ -704,6 +767,19 @@ namespace AppMonitor
                 if (!float.IsNaN(s.TempC)) extra += $"   Temp {s.TempC:0}°C";
                 extra += $"   Net {Analysis.Bytes(s.NetBps)}/s";
                 lines.Add((extra.Trim(), false));
+                if (s.Sensors != null)
+                {
+                    var fans = new List<string>(); var temps = new List<string>();
+                    for (int k = 0; k < s.Sensors.Length && k < trace.Sensors.Count; k++)
+                    {
+                        float v = s.Sensors[k];
+                        if (float.IsNaN(v)) continue;
+                        if (trace.Sensors[k].Kind == SensorKind.Fan) { if (v > 0) fans.Add($"{trace.Sensors[k].Name} {v:0}"); }
+                        else temps.Add($"{trace.Sensors[k].Name} {v:0}°");
+                    }
+                    if (fans.Count > 0) lines.Add(("Fans (rpm): " + string.Join(", ", fans), false));
+                    if (temps.Count > 0) lines.Add(("Temps: " + string.Join(", ", temps), false));
+                }
                 var top = s.Procs.Where(p => p.Cpu >= 0.5f || p.Gpu >= 1f || p.ReadBps + p.WriteBps > 1 << 20)
                                  .OrderByDescending(p => p.Cpu + p.Gpu * 0.5f).Take(6).ToList();
                 if (top.Count > 0) lines.Add(("Top processes", true));

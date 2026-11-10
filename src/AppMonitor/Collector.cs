@@ -85,6 +85,8 @@ namespace AppMonitor
         // self-overhead, for the status bar
         public volatile float SelfCpu, SelfMemMB;
         public volatile float LastSampleMs;
+        public volatile string SensorStatus = "";
+        HardwareSensors hw;
 
         static readonly int SelfPid = Process.GetCurrentProcess().Id;
         Thread thread;
@@ -162,6 +164,7 @@ namespace AppMonitor
             finally
             {
                 pdh?.Dispose(); gpuPdh?.Dispose(); pdh = gpuPdh = null;
+                hw?.Dispose(); hw = null;
                 if (spiBuf != IntPtr.Zero) { Marshal.FreeHGlobal(spiBuf); spiBuf = IntPtr.Zero; spiSize = 0; }
             }
         }
@@ -186,9 +189,31 @@ namespace AppMonitor
             gpuPdh.Collect();
             gpuHandler = OnGpuItem;
 
+            OpenSensors();
+
             Native.GetSystemTimes(out lastIdle, out lastKernel, out lastUser);
             clock.Restart(); lastSec = 0;
             ReadProcesses(0, first: true);
+        }
+
+        void OpenSensors()
+        {
+            SensorStatus = "reading sensors…";
+            try
+            {
+                hw = new HardwareSensors();
+                hw.Open();
+                SensorStatus = hw.Status;
+                lock (Trace.Sync) Trace.Sensors.AddRange(hw.Defs);
+                foreach (var d in hw.Defs) writer?.Sensor(d);
+                if (hw.Defs.Count == 0) { hw.Dispose(); hw = null; }
+            }
+            catch (Exception ex)
+            {
+                SensorStatus = "sensors unavailable: " + ex.Message;
+                try { hw?.Dispose(); } catch { }
+                hw = null;
+            }
         }
 
         void TakeSample()
@@ -243,6 +268,12 @@ namespace AppMonitor
             }
 
             s.Procs = ReadProcesses(dt, first: false);
+
+            if (hw != null)
+            {
+                try { s.Sensors = hw.Read(); }
+                catch (Exception ex) { SensorStatus = "sensor read failed: " + ex.Message; hw.Dispose(); hw = null; }
+            }
 
             Trace.AddSample(s);
             writer?.Sample(s);

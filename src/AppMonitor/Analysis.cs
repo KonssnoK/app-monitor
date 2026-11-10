@@ -28,7 +28,8 @@ namespace AppMonitor
     sealed class Episode
     {
         public long Start, End;
-        public float PeakCpu, PeakGpu, PeakTemp = float.NaN;
+        public float PeakCpu, PeakGpu, PeakTemp = float.NaN, PeakFan;
+        public string PeakFanName = "";
         public double AvgCpu, AvgGpu;
         public string Culprits = "";
         public double DurationSec => (End - Start) / (double)TimeSpan.TicksPerSecond;
@@ -135,7 +136,15 @@ namespace AppMonitor
                 ep.AvgCpu += s.Cpu * dt; ep.AvgGpu += s.Gpu * dt;
                 ep.PeakCpu = Math.Max(ep.PeakCpu, s.Cpu);
                 ep.PeakGpu = Math.Max(ep.PeakGpu, s.Gpu);
-                if (!float.IsNaN(s.TempC) && (float.IsNaN(ep.PeakTemp) || s.TempC > ep.PeakTemp)) ep.PeakTemp = s.TempC;
+                if (!t.HasTempSensors && !float.IsNaN(s.TempC) && (float.IsNaN(ep.PeakTemp) || s.TempC > ep.PeakTemp)) ep.PeakTemp = s.TempC;
+                if (s.Sensors != null)
+                    for (int k = 0; k < s.Sensors.Length && k < t.Sensors.Count; k++)
+                    {
+                        float v = s.Sensors[k];
+                        if (float.IsNaN(v)) continue;
+                        if (t.Sensors[k].Kind == SensorKind.Fan && v > ep.PeakFan) { ep.PeakFan = v; ep.PeakFanName = t.Sensors[k].Name; }
+                        if (t.Sensors[k].Kind == SensorKind.Temp && (float.IsNaN(ep.PeakTemp) || v > ep.PeakTemp)) ep.PeakTemp = v;
+                    }
                 foreach (var p in s.Procs)
                 {
                     if (!t.Procs.TryGetValue(p.Key, out var info)) continue;
