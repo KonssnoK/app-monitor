@@ -130,7 +130,7 @@ namespace AppMonitor
             if (trace != null && trace.GetExtent(out long s, out long e))
             {
                 long pad = span / 40;
-                if (span >= e - s) a = e + pad - span;   // whole recording fits: newest data on the right
+                if (span >= e - s) a = s - pad;          // whole recording fits: start it at the left edge
                 else a = Math.Max(s - pad, Math.Min(a, e + pad - span));
             }
             ViewStart = a; ViewEnd = a + span;
@@ -145,7 +145,12 @@ namespace AppMonitor
             {
                 long end = trace.GetExtent(out long s, out long e) ? e : DateTime.UtcNow.Ticks;
                 if (WindowTicks <= 0) { ViewStart = trace.GetExtent(out s, out _) ? s : end - TimeSpan.FromMinutes(1).Ticks; ViewEnd = Math.Max(end, ViewStart + TimeSpan.FromMinutes(1).Ticks); }
-                else { ViewEnd = end; ViewStart = end - WindowTicks; }
+                else if (trace.GetExtent(out s, out e) && e - s < WindowTicks)
+                {
+                    // recording shorter than the window: anchor it at the left edge and let it grow rightwards
+                    ViewStart = s; ViewEnd = s + WindowTicks;
+                }
+                else { ViewEnd = end; ViewStart = end - WindowTicks; } // full: scroll with the newest data on the right
             }
             dirty = true;
             Invalidate();
