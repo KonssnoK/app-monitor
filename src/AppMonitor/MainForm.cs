@@ -45,7 +45,7 @@ namespace AppMonitor
         readonly NotifyIcon tray = new NotifyIcon();
         readonly Timer uiTimer = new Timer { Interval = 1000 };
         readonly Timer debounce = new Timer { Interval = 250 };
-        int lastVersion = -1, tick;
+        int lastVersion = -1, tick, lastTableTick, lastEpisodeTick;
         string episodesSig = "";
         List<ProcStat> tableData = new List<ProcStat>();
         int sortCol = 3; bool sortDesc = true;
@@ -383,10 +383,12 @@ namespace AppMonitor
             if (!Visible || WindowState == FormWindowState.Minimized) return;
             var t = timeline.Trace;
             if (t == null || t != liveTrace || t.Version == lastVersion) return;
+            bool firstData = lastVersion <= 0;
             lastVersion = t.Version;
             if (timeline.Follow) timeline.DataChanged();
-            if (tick % 3 == 0 && !timeline.HasSelection && timeline.Follow) RefreshTable();
-            if (tick % 5 == 0) RefreshEpisodes();
+            // refresh as soon as data first arrives, then at most every ~3 s / ~5 s
+            if (!timeline.HasSelection && timeline.Follow && (firstData || tick - lastTableTick >= 3)) { lastTableTick = tick; RefreshTable(); }
+            if (firstData || tick - lastEpisodeTick >= 5) { lastEpisodeTick = tick; RefreshEpisodes(); }
         }
 
         void UpdateStatus()

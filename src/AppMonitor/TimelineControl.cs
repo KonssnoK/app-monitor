@@ -332,11 +332,11 @@ namespace AppMonitor
             using var g = Graphics.FromImage(cache);
             g.Clear(BackColor);
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
 
             if (trace == null)
             {
-                TextRenderer.DrawText(g, "Press ● Record to start, or Open a saved trace.", Font, ClientRectangle, Muted,
+                DrawText(g, "Press ● Record to start, or Open a saved trace.", Font, ClientRectangle, Muted,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
                 return;
             }
@@ -373,7 +373,7 @@ namespace AppMonitor
                     : (showDate && dt.TimeOfDay.Ticks < step ? dt.ToString("ddd ") : "") + dt.ToString(showSec ? "HH:mm:ss" : "HH:mm");
                 g.DrawLine(gridPen, x, plot.Top, x, plot.Bottom);
                 var sz = TextRenderer.MeasureText(label, Font);
-                TextRenderer.DrawText(g, label, Font, new Point((int)x - sz.Width / 2, 3), Muted);
+                DrawText(g, label, Font, new Point((int)x - sz.Width / 2, 3), Muted);
             }
         }
 
@@ -431,9 +431,9 @@ namespace AppMonitor
             using var bold = new Font(Font, FontStyle.Bold);
             int paren = title.IndexOf(" (");
             string head = paren > 0 ? title.Substring(0, paren) : title, sub = paren > 0 ? title.Substring(paren + 1) : "";
-            TextRenderer.DrawText(g, head, bold, new Point(8, r.Top + 1), Ink);
+            DrawText(g, head, bold, new Point(8, r.Top + 1), Ink);
             if (sub.Length > 0 && r.Height > bold.Height * 2)
-                TextRenderer.DrawText(g, sub, Font, new Rectangle(8, r.Top + bold.Height + 1, plot.Left - 14, r.Height - bold.Height), Muted, TextFormatFlags.WordBreak);
+                DrawText(g, sub, Font, new Rectangle(8, r.Top + bold.Height + 1, plot.Left - 14, r.Height - bold.Height), Muted, TextFormatFlags.WordBreak);
             int x = r.Left + 4, y0 = r.Top + 2;
             foreach (var (c, text) in legend)
             {
@@ -441,13 +441,32 @@ namespace AppMonitor
                 if (x + sz.Width + 14 > r.Right) break;
                 using (var wash = new SolidBrush(Color.FromArgb(200, 255, 255, 255))) g.FillRectangle(wash, x, y0, sz.Width + 12, sz.Height);
                 using (var b = new SolidBrush(c)) g.FillRectangle(b, x + 1, y0 + sz.Height / 2 - 4, 8, 8);
-                TextRenderer.DrawText(g, text, Font, new Point(x + 10, y0), Ink);
+                DrawText(g, text, Font, new Point(x + 10, y0), Ink);
                 x += sz.Width + 16;
             }
-            TextRenderer.DrawText(g, unitMax, Font, new Point(r.Right + 4, r.Top - 2), Muted);
+            DrawText(g, unitMax, Font, new Point(r.Right + 4, r.Top - 2), Muted);
         }
 
         static string Short(string s) => s.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? s.Substring(0, s.Length - 4) : s;
+
+        // GDI+ text: GDI's TextRenderer produces fringed ClearType glyphs when drawing into an off-screen bitmap.
+        static void DrawText(Graphics g, string s, Font f, Point p, Color c, TextFormatFlags flags = 0)
+        {
+            using var b = new SolidBrush(c);
+            using var sf = new StringFormat(StringFormat.GenericDefault) { FormatFlags = StringFormatFlags.NoWrap, HotkeyPrefix = System.Drawing.Text.HotkeyPrefix.None };
+            g.DrawString(s, f, b, p, sf);
+        }
+
+        static void DrawText(Graphics g, string s, Font f, Rectangle r, Color c, TextFormatFlags flags = 0)
+        {
+            using var b = new SolidBrush(c);
+            using var sf = new StringFormat(StringFormat.GenericDefault) { HotkeyPrefix = System.Drawing.Text.HotkeyPrefix.None };
+            if ((flags & TextFormatFlags.WordBreak) == 0) sf.FormatFlags |= StringFormatFlags.NoWrap;
+            if ((flags & TextFormatFlags.EndEllipsis) != 0) sf.Trimming = StringTrimming.EllipsisCharacter;
+            if ((flags & TextFormatFlags.HorizontalCenter) != 0) sf.Alignment = StringAlignment.Center;
+            if ((flags & TextFormatFlags.VerticalCenter) != 0) sf.LineAlignment = StringAlignment.Center;
+            g.DrawString(s, f, b, r, sf);
+        }
 
         static float MaxOf(float[] a, int n) { float m = 0; for (int i = 0; i < n; i++) if (a[i] > m) m = a[i]; return m; }
 
@@ -535,12 +554,12 @@ namespace AppMonitor
         {
             rows.Clear();
             using var bold = new Font(Font, FontStyle.Bold);
-            TextRenderer.DrawText(g, "Processes", bold, new Point(8, swim.Top - bold.Height - 3), Ink);
-            TextRenderer.DrawText(g, "one lane per process, busiest first · darker/taller = more CPU or GPU · click a lane to highlight it",
+            DrawText(g, "Processes", bold, new Point(8, swim.Top - bold.Height - 3), Ink);
+            DrawText(g, "one lane per process, busiest first · darker/taller = more CPU or GPU · click a lane to highlight it",
                 Font, new Point(plot.Left + 4, swim.Top - Font.Height - 3), Muted);
             if (f.RowNames == null || f.RowNames.Length == 0)
             {
-                TextRenderer.DrawText(g, "No process activity in this window", Font, swim, Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                DrawText(g, "No process activity in this window", Font, swim, Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
                 return;
             }
             int n = Math.Min(f.RowNames.Length, swim.Height / rowH);
@@ -576,11 +595,11 @@ namespace AppMonitor
                     g.FillRectangle(b, x0, r.Bottom - 1 - h, Math.Max(1f, x1 - x0), h);
                 }
                 var lr = new Rectangle(8, r.Top + 2, plot.Left - 12, r.Height);
-                TextRenderer.DrawText(g, Short(name), hi ? bold : Font, lr, hi ? HiColor : Ink, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-                TextRenderer.DrawText(g, $"{f.RowAvg[k]:0.#}%", Font, new Point(r.Right + 4, r.Top + 2), Muted);
+                DrawText(g, Short(name), hi ? bold : Font, lr, hi ? HiColor : Ink, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                DrawText(g, $"{f.RowAvg[k]:0.#}%", Font, new Point(r.Right + 4, r.Top + 2), Muted);
             }
             if (f.RowNames.Length > n)
-                TextRenderer.DrawText(g, $"+{f.RowNames.Length - n} more — zoom in or see the table", Font, new Point(8, swim.Top + n * rowH + 2), Muted);
+                DrawText(g, $"+{f.RowNames.Length - n} more — zoom in or see the table", Font, new Point(8, swim.Top + n * rowH + 2), Muted);
         }
 
         void DrawOverview(Graphics g, float[] ov)
@@ -592,7 +611,7 @@ namespace AppMonitor
             float x0 = OvX(ViewStart), x1 = OvX(ViewEnd);
             using (var v = new SolidBrush(Color.FromArgb(40, 0x4E, 0x79, 0xA7))) g.FillRectangle(v, x0, overview.Top, Math.Max(2, x1 - x0), overview.Height);
             using (var p = new Pen(Color.FromArgb(0x4E, 0x79, 0xA7))) g.DrawRectangle(p, x0, overview.Top, Math.Max(2, x1 - x0), overview.Height - 1);
-            TextRenderer.DrawText(g, "overview", Font, new Point(overview.Right + 4, overview.Top), Muted,
+            DrawText(g, "overview", Font, new Point(overview.Right + 4, overview.Top), Muted,
                 TextFormatFlags.WordBreak);
         }
 
@@ -686,7 +705,7 @@ namespace AppMonitor
             int y = box.Y + 5;
             foreach (var (text, b) in lines)
             {
-                TextRenderer.DrawText(g, text, b ? bold : Font, new Point(box.X + 8, y), Ink, TextFormatFlags.NoPrefix);
+                DrawText(g, text, b ? bold : Font, new Point(box.X + 8, y), Ink, TextFormatFlags.NoPrefix);
                 y += lh;
             }
         }
