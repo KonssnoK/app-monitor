@@ -439,6 +439,7 @@ namespace AppMonitor
             if (info.User.Length == 0)
                 info.User = c.Pid == 4 || session == 0 ? "SYSTEM (restricted)" : "session " + session;
             if (session == 0) info.Services = GetServices(c.Pid);
+            if (info.Services.Length == 0) info.Services = ProcessNames.Describe(info.Name, info.CommandLine);
 
             Trace.AddProc(info);
             writer?.Proc(info);

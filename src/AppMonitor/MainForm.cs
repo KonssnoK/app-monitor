@@ -164,8 +164,8 @@ namespace AppMonitor
             left.Controls.Add(epHeader);
 
             // bottom: process table
-            string[] cols = { "Process", "PID", "User", "Avg CPU", "Peak CPU", "CPU time", "Avg GPU", "Peak GPU", "Disk read", "Disk write", "Peak mem", "Seen for", "Command line" };
-            int[] widths = { 230, 70, 130, 64, 68, 70, 64, 68, 76, 76, 74, 70, 600 };
+            string[] cols = { "Process", "PID", "User", "Avg CPU", "Peak CPU", "CPU time", "Avg GPU", "Peak GPU", "I/O read", "I/O write", "Peak mem", "Seen for", "Command line" };
+            int[] widths = { 330, 70, 130, 64, 68, 70, 64, 68, 76, 76, 74, 70, 600 };
             for (int i = 0; i < cols.Length; i++)
                 table.Columns.Add(cols[i], widths[i], i >= 3 && i <= 11 ? HorizontalAlignment.Right : HorizontalAlignment.Left);
             table.ColumnClick += (s, e) => { if (sortCol == e.Column) sortDesc = !sortDesc; else { sortCol = e.Column; sortDesc = e.Column >= 3 && e.Column <= 11; } FillTable(); };
@@ -347,7 +347,7 @@ namespace AppMonitor
             using var dlg = new SaveFileDialog { Filter = "CSV (*.csv)|*.csv", FileName = "processes.csv" };
             if (dlg.ShowDialog(this) != DialogResult.OK) return;
             var sb = new StringBuilder();
-            sb.AppendLine("Process,PIDs,User,AvgCpuPct,PeakCpuPct,CpuSeconds,AvgGpuPct,PeakGpuPct,DiskReadBytes,DiskWriteBytes,PeakMemMB,SeenSeconds,CommandLine");
+            sb.AppendLine("Process,PIDs,User,AvgCpuPct,PeakCpuPct,CpuSeconds,AvgGpuPct,PeakGpuPct,IoReadBytes,IoWriteBytes,PeakMemMB,SeenSeconds,CommandLine");
             foreach (var s in Filtered())
                 sb.AppendLine(string.Join(",", Csv(s.Name), Csv(s.Pids), Csv(s.User), F(s.AvgCpu), F(s.PeakCpu), F(s.CpuSec), F(s.AvgGpu), F(s.PeakGpu),
                     F(s.ReadBytes), F(s.WriteBytes), F(s.PeakMem), F(s.ActiveSec), Csv(s.CommandLine)));
