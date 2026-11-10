@@ -35,6 +35,7 @@ namespace AppMonitor
         readonly NumericUpDown numMinSec = new NumericUpDown { Minimum = 2, Maximum = 3600, Value = 10, Width = 52 };
         readonly DbListView table = new DbListView();
         readonly Label lblRange = new Label { AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+        readonly Button btnClearSel = new Button { Text = "✕ Clear selection", AutoSize = true, Visible = false, Margin = new Padding(0, 2, 0, 0), Anchor = AnchorStyles.Left };
         readonly CheckBox chkGroup = new CheckBox { Text = "Group by name", Checked = true, AutoSize = true, Margin = new Padding(8, 5, 4, 0) };
         readonly TextBox txtFilter = new TextBox { Width = 160, Margin = new Padding(4, 3, 4, 0) };
 
@@ -77,6 +78,8 @@ namespace AppMonitor
             timeline.ViewChanged += (s, e) => { if (!timeline.HasSelection) { debounce.Stop(); debounce.Start(); } };
             timeline.FollowChanged += (s, e) => btnLive.Checked = timeline.Follow;
             timeline.ProcessClicked += OnLaneClicked;
+            KeyPreview = true;
+            KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape && timeline.HasSelection) { timeline.ClearSelection(); e.Handled = true; } };
             debounce.Tick += (s, e) => { debounce.Stop(); RefreshTable(); };
             uiTimer.Tick += (s, e) => OnTick();
             uiTimer.Start();
@@ -179,15 +182,19 @@ namespace AppMonitor
             chkGroup.CheckedChanged += (s, e) => RefreshTable();
             txtFilter.TextChanged += (s, e) => FillTable();
 
-            var tableBar = new TableLayoutPanel { Dock = DockStyle.Top, Height = 30, ColumnCount = 4, Padding = new Padding(4, 2, 4, 0) };
+            btnClearSel.Click += (s, e) => timeline.ClearSelection();
+            var tableBar = new TableLayoutPanel { Dock = DockStyle.Top, Height = 32, ColumnCount = 5, Padding = new Padding(4, 2, 4, 0) };
+            tableBar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             tableBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             tableBar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             tableBar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             tableBar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            lblRange.Dock = DockStyle.None; lblRange.AutoSize = true; lblRange.Margin = new Padding(0, 7, 6, 0);
             tableBar.Controls.Add(lblRange, 0, 0);
-            tableBar.Controls.Add(chkGroup, 1, 0);
-            tableBar.Controls.Add(new Label { Text = "Filter:", AutoSize = true, Margin = new Padding(12, 7, 0, 0) }, 2, 0);
-            tableBar.Controls.Add(txtFilter, 3, 0);
+            tableBar.Controls.Add(btnClearSel, 1, 0);
+            tableBar.Controls.Add(chkGroup, 2, 0);
+            tableBar.Controls.Add(new Label { Text = "Filter:", AutoSize = true, Margin = new Padding(12, 7, 0, 0) }, 3, 0);
+            tableBar.Controls.Add(txtFilter, 4, 0);
             var bottom = new Panel { Dock = DockStyle.Fill };
             bottom.Controls.Add(table);
             bottom.Controls.Add(tableBar);
@@ -195,7 +202,7 @@ namespace AppMonitor
             var hint = new Label
             {
                 Dock = DockStyle.Bottom, Height = Font.Height + 6, ForeColor = Color.DimGray, Padding = new Padding(6, 2, 0, 0),
-                Text = "Wheel: zoom · Drag: select a range · Click: one moment · Right-drag: pan · Bottom strip: jump · Double-click: clear selection · Click a process below to highlight it",
+                Text = "Wheel: zoom · Drag: select a range · Click: one moment · Right-drag: pan · Bottom strip: jump · Esc or double-click: clear selection · Click a process below to highlight it",
             };
             var right = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 6 };
             right.Panel1.Controls.Add(timeline);
@@ -458,8 +465,8 @@ namespace AppMonitor
             var lb = new DateTime(b, DateTimeKind.Utc).ToLocalTime();
             string fmt = la.Date == lb.Date ? "HH:mm:ss" : "ddd d MMM HH:mm:ss";
             lblRange.Text = (timeline.HasSelection ? "Selection" : "Visible window") +
-                $":  {la.ToString(la.Date == DateTime.Today ? "HH:mm:ss" : "ddd d MMM HH:mm:ss")} → {lb.ToString(fmt)}  ({Analysis.Duration(sec)} of data)" +
-                (timeline.HasSelection ? "   — double-click the chart to clear" : "");
+                $":  {la.ToString(la.Date == DateTime.Today ? "HH:mm:ss" : "ddd d MMM HH:mm:ss")} → {lb.ToString(fmt)}  ({Analysis.Duration(sec)} of data)";
+            btnClearSel.Visible = timeline.HasSelection;
             FillTable();
         }
 
