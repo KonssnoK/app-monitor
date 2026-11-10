@@ -327,6 +327,7 @@ namespace AppMonitor
             {
                 cache?.Dispose();
                 cache = new Bitmap(Math.Max(1, Width), Math.Max(1, Height), System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                using (var screen = CreateGraphics()) cache.SetResolution(screen.DpiX, screen.DpiY);
             }
             using var g = Graphics.FromImage(cache);
             g.Clear(BackColor);
@@ -601,7 +602,13 @@ namespace AppMonitor
         protected override void OnPaint(PaintEventArgs e)
         {
             if (dirty || cache == null || cache.Width != Width || cache.Height != Height) RenderCache();
-            e.Graphics.DrawImageUnscaled(cache, 0, 0);
+            // 1:1 pixel copy; DrawImageUnscaled would rescale by bitmap-vs-screen DPI on scaled displays and smear text
+            var gs = e.Graphics.Save();
+            e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+            e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
+            e.Graphics.CompositingMode = CompositingMode.SourceCopy;
+            e.Graphics.DrawImage(cache, new Rectangle(0, 0, cache.Width, cache.Height), 0, 0, cache.Width, cache.Height, GraphicsUnit.Pixel);
+            e.Graphics.Restore(gs);
             if (trace == null) return;
             var g = e.Graphics;
 
