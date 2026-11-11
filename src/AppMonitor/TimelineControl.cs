@@ -168,17 +168,17 @@ namespace AppMonitor
             overview = new Rectangle(plot.Left, plot.Bottom + 8, plot.Width, ovH);
 
             // (lane, share of spare height, minimum height in lines of text so it stays readable)
-            var defs = new List<(Lane lane, float w, float minLines)> { (Lane.Cpu, 3f, 4.5f), (Lane.Gpu, 2f, 4f) };
-            if (trace != null && trace.HasFans) defs.Add((Lane.Fan, 1.8f, 4f));
-            if (trace != null && (trace.HasTempSensors || trace.HasTemp)) defs.Add((Lane.Temp, trace.HasTempSensors ? 1.8f : 1f, trace.HasTempSensors ? 4.5f : 3f));
-            defs.AddRange(new[] { (Lane.Disk, 1.4f, 3f), (Lane.Mem, 1f, 2.5f), (Lane.Clock, 1f, 2.5f), (Lane.Net, 1f, 2.5f) });
+            var defs = new List<(Lane lane, float w, float minLines)> { (Lane.Cpu, 3f, 3f), (Lane.Gpu, 2f, 2.5f) };
+            if (trace != null && trace.HasFans) defs.Add((Lane.Fan, 1.8f, 3f));
+            if (trace != null && (trace.HasTempSensors || trace.HasTemp)) defs.Add((Lane.Temp, trace.HasTempSensors ? 1.8f : 1f, trace.HasTempSensors ? 3f : 2f));
+            defs.AddRange(new[] { (Lane.Disk, 1.4f, 2f), (Lane.Mem, 1f, 1.6f), (Lane.Clock, 1f, 1.6f), (Lane.Net, 1f, 1.6f) });
             const int gap = 5;
             // Tracealyzer-style split: system graphs on top, one swimlane per process below.
             // SwimFraction is user-adjustable by dragging the "Processes" divider.
             rowH = Font.Height + 5;
             int headH = Font.Height + 12;
             float minSum = defs.Sum(d => d.minLines * Font.Height) + gap * (defs.Count - 1);
-            int lanesH = (int)Math.Max(plot.Height * (1 - SwimFraction) - headH, Math.Min(minSum, plot.Height * 0.85f - headH));
+            int lanesH = (int)Math.Max(plot.Height * (1 - SwimFraction) - headH, Math.Min(minSum, plot.Height * 0.70f - headH));
             lanesH = Math.Max(defs.Count * 8, Math.Min(lanesH, plot.Height - headH - rowH * 3));
             int swimH = Math.Max(rowH, plot.Height - lanesH - headH);
             swim = new Rectangle(plot.Left, plot.Bottom - swimH, plot.Width, swimH);
