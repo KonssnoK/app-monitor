@@ -462,7 +462,7 @@ namespace AppMonitor
                 case Lane.Temp:
                     if (trace.HasTempSensors)
                     {
-                        max = Math.Max(100, NiceMax(SensorMax(f, SensorKind.Temp), 10)); title = "Temperature (°C, peak in view)"; unitMax = $"{max:0}°C";
+                        max = Math.Max(100, NiceMax(SensorMax(f, SensorKind.Temp), 10)); title = "Temperature (°C, latest in view, peak)"; unitMax = $"{max:0}°C";
                         DrawSensors(g, r, f, SensorKind.Temp, max, legend, "°C");
                     }
                     else
@@ -518,11 +518,14 @@ namespace AppMonitor
                 bool hasData = false;
                 for (int i = 0; i < f.N && !hasData; i++) hasData = !float.IsNaN(v[i]);
                 if (!hasData) continue;
-                float peak = MaxOf(v, f.N);
+                float peak = MaxOf(v, f.N), last = float.NaN;
+                for (int i = f.N - 1; i >= 0 && float.IsNaN(last); i--) last = v[i];
                 var c = Palette[ci++ % Palette.Length];
                 DrawLine(g, r, f, v, max, c, 1.5f);
-                // GPUs stop their fans entirely at low load (zero-RPM mode): say so instead of hiding the fan
-                string val = kind == SensorKind.Fan && peak <= 0 ? "stopped" : $"{peak:0}{unit}";
+                // latest value in view (= now, while live) plus the peak; GPUs stop their fans at low load (zero-RPM mode)
+                string val = kind == SensorKind.Fan && peak <= 0 ? "stopped"
+                           : Math.Round(last) >= Math.Round(peak) ? $"{last:0}{unit}"
+                           : $"{last:0}{unit} (peak {peak:0})";
                 legend.Add((c, $"{trace.Sensors[k].Name} {val}"));
             }
         }

@@ -51,7 +51,7 @@ namespace AppMonitor
                 // even at 0 because GPUs stop their fans when cool (zero-RPM mode)
                 bool isGpu = hw.HardwareType == HardwareType.GpuNvidia || hw.HardwareType == HardwareType.GpuAmd || hw.HardwareType == HardwareType.GpuIntel;
                 foreach (var s in hw.Sensors.Where(s => s.SensorType == SensorType.Fan && (isGpu || s.Value > 0)))
-                    fans.Add((s, (prefix + s.Name).Trim()));
+                    fans.Add((s, (prefix + BoardName(hw, s)).Trim()));
 
                 switch (hw.HardwareType)
                 {
@@ -68,7 +68,10 @@ namespace AppMonitor
                     case HardwareType.SuperIO:
                         // board temperature probes; skip disconnected ones that read nonsense
                         foreach (var s in hwTemps.Where(s => s.Value > 1 && s.Value < 115).Take(4))
-                            temps.Add((s, "Board " + s.Name));
+                        {
+                            string n = BoardName(hw, s);
+                            temps.Add((s, n == s.Name ? "Board " + n : n));
+                        }
                         break;
                 }
             }
@@ -88,6 +91,22 @@ namespace AppMonitor
             Defs.Add(new SensorDef { Index = Defs.Count, Name = name, Kind = kind });
             sensors.Add(s);
             if (!toUpdate.Contains(s.Hardware)) toUpdate.Add(s.Hardware);
+        }
+
+        /// <summary>
+        /// Real names for generic Super I/O channels where the wiring is known.
+        /// Gigabyte boards with an ITE IT8696E (X870/X870E AORUS family): fan #1 = CPU_FAN header,
+        /// temperature #3 = the CPU temperature the board's fan curves use (what Gigabyte Control Center shows).
+        /// Verified on X870I AORUS PRO ICE against GCC; other boards keep LibreHardwareMonitor's names.
+        /// </summary>
+        static string BoardName(IHardware hw, ISensor s)
+        {
+            if (hw.HardwareType != HardwareType.SuperIO || hw.Name.IndexOf("IT8696E", StringComparison.OrdinalIgnoreCase) < 0) return s.Name;
+            string board = hw.Parent?.Name ?? "";
+            if (board.IndexOf("Gigabyte", StringComparison.OrdinalIgnoreCase) < 0 && board.IndexOf("AORUS", StringComparison.OrdinalIgnoreCase) < 0) return s.Name;
+            if (s.SensorType == SensorType.Fan && s.Name == "Fan #1") return "CPU fan";
+            if (s.SensorType == SensorType.Temperature && s.Name == "Temperature #3") return "CPU (board)";
+            return s.Name;
         }
 
         static string Prefix(IHardware hw)

@@ -47,7 +47,12 @@ PawnIO and the vendor tools can be installed side by side. If both read the fan 
 
 - **Motherboard fans** are included only if they are spinning when recording starts. Empty fan headers report 0, and this rule leaves them out. A side effect: a fan that happens to be stopped at that moment is also skipped.
 - **GPU fans** are always included. GPUs stop their fans completely when cool ("zero-RPM" mode), so the timeline shows them as "stopped" at idle. That's normal.
-- **Fan names** come from the fan chip, so they are often generic, such as `Fan #1`. To find out which header is which, watch which fan rises with CPU load: that's the CPU fan or pump.
+- **Fan names** come from the fan chip, so they are often generic, such as `Fan #1`. To find out which header is which, watch which fan rises with CPU load: that's the CPU fan or pump. On Gigabyte boards with an ITE IT8696E chip (X870/X870E AORUS), the wiring is known, so the app shows `CPU fan` and `CPU (board)` instead.
+- **Two CPU temperatures:**
+  - `CPU` is AMD's Tctl/Intel's Package value: the hottest point on the chip. It jumps by 10 °C or more within a second at any burst of load.
+  - `CPU (board)` is the smoother reading the motherboard's fan curve uses. It's what vendor tools such as Gigabyte Control Center call "CPU Temperature".
+  - The two normally differ by a few degrees.
+- **Legend values:** each sensor shows its latest value in the visible window (the current value while live), plus the peak in that window when it was higher. Hover over the chart to see the readings at any moment.
 - **Motherboard temperatures** are only included if they read between 1 and 115 °C. This filters out unconnected probes.
 
 ## Where sensors show up
