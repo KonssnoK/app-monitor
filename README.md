@@ -33,7 +33,7 @@ AppMonitor.exe some.amtrace     open a trace
 
 - Closing or minimizing the window while recording keeps it recording in the tray.
 - **More → Start with Windows** registers `--record --tray` at logon, so it is always recording when the fan goes off.
-- **More → Restart as administrator** shows users and command lines for system processes as well. CPU/IO numbers for all processes are collected either way.
+- **More → Restart as administrator** shows users and command lines for system processes as well. CPU/IO numbers for all processes are collected either way. With [PawnIO](https://pawnio.eu) installed, it also enables motherboard fans and CPU temperature (see below).
 
 ## Fan speed and temperatures
 
@@ -44,10 +44,19 @@ Windows has no standard fan-speed API. The app reads fan speeds and temperatures
 | GPU fans and GPU temperature (NVIDIA/AMD) | nothing, works as a normal user |
 | Motherboard fans (CPU fan, case fans) and real CPU temperature | administrator rights **and** the [PawnIO](https://pawnio.eu) driver (one-time install) |
 
-- The status bar shows which sensors were found. **More → Get the PawnIO driver…** explains how to install it.
-- Busy periods show the fastest fan speed during each period.
-- GPUs stop their fans completely when cool ("zero-RPM" mode), so "stopped" at idle is normal.
-- Without any sensors, the app falls back to the ACPI thermal zone temperature. That value is often fake.
+**Quick setup for motherboard fans:**
+1. Install PawnIO from <https://pawnio.eu>.
+2. Use **More → Restart as administrator**.
+3. Check that the status bar lists the new sensors.
+
+- PawnIO is a separate, opt-in install; AppMonitor doesn't bundle it.
+- Drivers installed by vendor tools such as Gigabyte Control Center can't be used instead.
+- See **[docs/sensors.md](docs/sensors.md)** for details: what PawnIO is, uninstalling it, how fans are chosen, and running alongside vendor tools.
+
+## Third-party components
+
+- [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0): embedded in the exe. Reads fan speeds and temperatures.
+- [PawnIO](https://pawnio.eu) ([source](https://github.com/namazso/PawnIO)): not bundled. It's the optional driver LibreHardwareMonitor uses for motherboard and CPU sensors.
 
 ## Build
 
