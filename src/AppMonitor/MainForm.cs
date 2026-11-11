@@ -49,6 +49,7 @@ namespace AppMonitor
         readonly Timer debounce = new Timer { Interval = 250 };
         int lastVersion = -1, tick, lastTableTick, lastEpisodeTick;
         string episodesSig = "";
+        bool refreshingEpisodes;
         List<ProcStat> tableData = new List<ProcStat>();
         int sortCol = 3; bool sortDesc = true;
 
@@ -148,6 +149,7 @@ namespace AppMonitor
             episodesList.ShowItemToolTips = true;
             episodesList.SelectedIndexChanged += (s, e) =>
             {
+                if (refreshingEpisodes) return; // list rebuilt by the timer, not clicked by the user
                 if (episodesList.SelectedItems.Count == 0 || !(episodesList.SelectedItems[0].Tag is Episode ep)) return;
                 timeline.ShowRange(ep.Start, ep.End);
                 timeline.Select(ep.Start, ep.End);
@@ -294,6 +296,8 @@ namespace AppMonitor
             {
                 if (timeline.Trace != liveTrace) ShowTrace(liveTrace);
                 timeline.ClearSelection();
+                refreshingEpisodes = true; // un-highlight the busy period without jumping to it
+                try { episodesList.SelectedItems.Clear(); } finally { refreshingEpisodes = false; }
                 timeline.Follow = collector.Running;
                 timeline.SetWindow(Windows[cmbWindow.SelectedIndex].ticks);
             }
@@ -437,6 +441,12 @@ namespace AppMonitor
             if (sig == episodesSig) return;
             episodesSig = sig;
             long? selected = episodesList.SelectedItems.Count > 0 ? (episodesList.SelectedItems[0].Tag as Episode)?.Start : null;
+            refreshingEpisodes = true;
+            try { FillEpisodes(eps, selected); } finally { refreshingEpisodes = false; }
+        }
+
+        void FillEpisodes(List<Episode> eps, long? selected)
+        {
             episodesList.BeginUpdate();
             episodesList.Items.Clear();
             foreach (var ep in eps.Take(1000))
