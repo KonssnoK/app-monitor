@@ -48,7 +48,7 @@ namespace AppMonitor
         readonly List<(string name, Rectangle rect)> rows = new List<(string, Rectangle)>();
         readonly List<(Lane lane, Rectangle rect)> lanes = new List<(Lane, Rectangle)>();
         Point mouse = new Point(-1, -1);
-        enum Drag { None, Select, Pan, Overview }
+        enum Drag { None, Select, Pan, Overview, Divider }
         Drag drag;
         int dragX; long dragT, dragViewStart, grabOffset;
         long ovStart, ovEnd;
@@ -167,26 +167,41 @@ namespace AppMonitor
             plot = new Rectangle(gutter, axisH, Math.Max(10, Width - gutter - 58), Math.Max(10, Height - axisH - ovH - 12));
             overview = new Rectangle(plot.Left, plot.Bottom + 8, plot.Width, ovH);
 
-            var defs = new List<(Lane, float)> { (Lane.Cpu, 3f), (Lane.Gpu, 2f) };
-            if (trace != null && trace.HasFans) defs.Add((Lane.Fan, 1.8f));
-            if (trace != null && (trace.HasTempSensors || trace.HasTemp)) defs.Add((Lane.Temp, trace.HasTempSensors ? 1.5f : 1f));
-            defs.AddRange(new[] { (Lane.Disk, 1.4f), (Lane.Mem, 1f), (Lane.Clock, 1f), (Lane.Net, 1f) });
-            float total = defs.Sum(d => d.Item2);
+            // (lane, share of spare height, minimum height in lines of text so it stays readable)
+            var defs = new List<(Lane lane, float w, float minLines)> { (Lane.Cpu, 3f, 4.5f), (Lane.Gpu, 2f, 4f) };
+            if (trace != null && trace.HasFans) defs.Add((Lane.Fan, 1.8f, 4f));
+            if (trace != null && (trace.HasTempSensors || trace.HasTemp)) defs.Add((Lane.Temp, trace.HasTempSensors ? 1.8f : 1f, trace.HasTempSensors ? 4.5f : 3f));
+            defs.AddRange(new[] { (Lane.Disk, 1.4f, 3f), (Lane.Mem, 1f, 2.5f), (Lane.Clock, 1f, 2.5f), (Lane.Net, 1f, 2.5f) });
             const int gap = 5;
-            // Tracealyzer-style split: system graphs on top, one swimlane per process below
+            // Tracealyzer-style split: system graphs on top, one swimlane per process below.
+            // SwimFraction is user-adjustable by dragging the "Processes" divider.
             rowH = Font.Height + 5;
-            int swimH = Math.Max(rowH * 3, (int)(plot.Height * 0.40));
+            int headH = Font.Height + 12;
+            float minSum = defs.Sum(d => d.minLines * Font.Height) + gap * (defs.Count - 1);
+            int lanesH = (int)Math.Max(plot.Height * (1 - SwimFraction) - headH, Math.Min(minSum, plot.Height * 0.85f - headH));
+            lanesH = Math.Max(defs.Count * 8, Math.Min(lanesH, plot.Height - headH - rowH * 3));
+            int swimH = Math.Max(rowH, plot.Height - lanesH - headH);
             swim = new Rectangle(plot.Left, plot.Bottom - swimH, plot.Width, swimH);
-            float avail = plot.Height - swimH - Font.Height - 12 - gap * (defs.Count - 1);
+            divider = new Rectangle(0, plot.Top + lanesH, Width, headH);
+
+            // every lane gets its minimum, the remainder is shared by weight (or everything shrinks if even minimums don't fit)
+            float avail = lanesH - gap * (defs.Count - 1);
+            float mins = defs.Sum(d => d.minLines * Font.Height), weights = defs.Sum(d => d.w);
+            float scale = mins > avail ? avail / mins : 1f, spare = Math.Max(0, avail - mins);
             lanes.Clear();
             float y = plot.Top;
-            foreach (var (lane, w) in defs)
+            foreach (var d in defs)
             {
-                float h = avail * w / total;
-                lanes.Add((lane, new Rectangle(plot.Left, (int)y, plot.Width, Math.Max(8, (int)h))));
+                float h = d.minLines * Font.Height * scale + spare * d.w / weights;
+                lanes.Add((d.lane, new Rectangle(plot.Left, (int)y, plot.Width, Math.Max(8, (int)h))));
                 y += h + gap;
             }
         }
+
+        /// <summary>Share of the plot height given to the process swimlanes (dragging the divider changes it).</summary>
+        public float SwimFraction = 0.40f;
+        public event EventHandler SwimFractionChanged;
+        Rectangle divider;
 
         float X(long t) => plot.Left + (float)((t - ViewStart) / (double)(ViewEnd - ViewStart) * plot.Width);
         long TimeAt(int x) => ViewStart + (long)((x - plot.Left) / (double)plot.Width * (ViewEnd - ViewStart));
@@ -619,8 +634,12 @@ namespace AppMonitor
         {
             rows.Clear();
             using var bold = new Font(Font, FontStyle.Bold);
+            // divider between system graphs and processes: a line with a grip, draggable up/down
+            using (var dp = new Pen(Color.FromArgb(0xC8, 0xCC, 0xD2))) g.DrawLine(dp, 0, divider.Top + 2, Width, divider.Top + 2);
+            using (var gb = new SolidBrush(Color.FromArgb(0x9A, 0xA0, 0xA8)))
+                for (int k = -2; k <= 2; k++) g.FillEllipse(gb, plot.Left + plot.Width / 2 + k * 7 - 1.5f, divider.Top + 0.5f, 3, 3);
             DrawText(g, "Processes", bold, new Point(8, swim.Top - bold.Height - 3), Ink);
-            DrawText(g, "one lane per process, busiest first · darker/taller = more CPU or GPU · click a lane to highlight it",
+            DrawText(g, "one lane per process, busiest first · darker/taller = more CPU or GPU · click a lane to highlight it · drag this line to resize",
                 Font, new Point(plot.Left + 4, swim.Top - Font.Height - 3), Muted);
             if (f.RowNames == null || f.RowNames.Length == 0)
             {
@@ -823,6 +842,7 @@ namespace AppMonitor
         {
             Focus();
             if (trace == null) return;
+            if (divider.Contains(e.Location) && e.Button == MouseButtons.Left) { drag = Drag.Divider; return; }
             if (overview.Contains(e.Location))
             {
                 // grab the box where it was clicked; clicking outside the box jumps it there first
@@ -845,8 +865,13 @@ namespace AppMonitor
         protected override void OnMouseMove(MouseEventArgs e)
         {
             mouse = e.Location;
+            Cursor = drag == Drag.Divider || (drag == Drag.None && divider.Contains(e.Location)) ? Cursors.HSplit : Cursors.Default;
             switch (drag)
             {
+                case Drag.Divider:
+                    SwimFraction = Math.Max(0.08f, Math.Min(0.85f, (plot.Bottom - e.Y - Font.Height / 2f) / (float)plot.Height));
+                    dirty = true; Invalidate();
+                    return;
                 case Drag.Select:
                     if (Math.Abs(e.X - dragX) > 3)
                     {
@@ -870,6 +895,7 @@ namespace AppMonitor
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
+            if (drag == Drag.Divider) { drag = Drag.None; SwimFractionChanged?.Invoke(this, EventArgs.Empty); return; }
             if (drag == Drag.Select)
             {
                 if (Math.Abs(e.X - dragX) <= 3)

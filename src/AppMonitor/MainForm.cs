@@ -207,7 +207,18 @@ namespace AppMonitor
                 Dock = DockStyle.Bottom, Height = Font.Height + 6, ForeColor = Color.DimGray, Padding = new Padding(6, 2, 0, 0),
                 Text = "Wheel: zoom · Drag: select a range · Click: one moment · Right-drag: pan · Bottom strip: jump · Esc or double-click: clear selection · Click a process below to highlight it",
             };
-            var right = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 6 };
+            // charts above, process table below; the bar between them is visible and draggable
+            var right = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 8, BackColor = Color.FromArgb(0xD8, 0xDB, 0xE0) };
+            right.Panel1.BackColor = right.Panel2.BackColor = SystemColors.Control;
+            right.Paint += (s, e) =>
+            {
+                var r = right.SplitterRectangle;
+                using var b = new SolidBrush(Color.FromArgb(0x8A, 0x90, 0x98));
+                for (int k = -3; k <= 3; k++) e.Graphics.FillEllipse(b, r.Left + r.Width / 2 + k * 8 - 1.5f, r.Top + r.Height / 2f - 1.5f, 3, 3);
+            };
+            right.SplitterMoved += (s, e) => { right.Invalidate(); if (layoutReady) SaveSetting("ChartSplit", right.SplitterDistance / (double)Math.Max(1, right.Height)); };
+            timeline.SwimFractionChanged += (s, e) => SaveSetting("SwimFraction", timeline.SwimFraction);
+            timeline.SwimFraction = (float)LoadSetting("SwimFraction", 0.40, 0.08, 0.85);
             right.Panel1.Controls.Add(timeline);
             right.Panel1.Controls.Add(hint);
             right.Panel2.Controls.Add(bottom);
@@ -226,8 +237,34 @@ namespace AppMonitor
             Load += (s, e) =>
             {
                 main.SplitterDistance = 340;
-                right.SplitterDistance = (int)(right.Height * 0.64);
+                right.SplitterDistance = (int)(right.Height * LoadSetting("ChartSplit", 0.64, 0.2, 0.92));
+                layoutReady = true;
             };
+        }
+
+        bool layoutReady;
+        const string SettingsKey = @"Software\AppMonitor";
+
+        static double LoadSetting(string name, double def, double min, double max)
+        {
+            try
+            {
+                using var k = Registry.CurrentUser.OpenSubKey(SettingsKey);
+                if (k?.GetValue(name) is string s && double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
+                    return Math.Max(min, Math.Min(max, v));
+            }
+            catch { }
+            return def;
+        }
+
+        static void SaveSetting(string name, double value)
+        {
+            try
+            {
+                using var k = Registry.CurrentUser.CreateSubKey(SettingsKey);
+                k.SetValue(name, value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            catch { }
         }
 
         void BuildTray()
