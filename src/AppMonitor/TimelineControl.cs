@@ -96,6 +96,7 @@ namespace AppMonitor
 
         public void Select(long a, long b)
         {
+            Follow = false; // a selection pins the view, otherwise it would scroll away under the user
             SelStart = a; SelEnd = b; Invalidate();
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -849,7 +850,8 @@ namespace AppMonitor
                 case Drag.Select:
                     if (Math.Abs(e.X - dragX) > 3)
                     {
-                        long t = TimeAt(Math.Max(plot.Left, Math.Min(plot.Right, e.X)));
+                        Follow = false; // freeze the view while selecting
+                        long t =TimeAt(Math.Max(plot.Left, Math.Min(plot.Right, e.X)));
                         SelStart = Math.Min(dragT, t); SelEnd = Math.Max(dragT, t);
                     }
                     break;

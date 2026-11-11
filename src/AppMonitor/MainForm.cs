@@ -23,7 +23,7 @@ namespace AppMonitor
         // toolbar
         readonly ToolStrip tools = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Padding = new Padding(6, 2, 6, 2), ImageScalingSize = new Size(1, 1) };
         readonly ToolStripButton btnRecord = new ToolStripButton("● Record") { ToolTipText = "Start/stop recording (auto-saved to the traces folder)" };
-        readonly ToolStripButton btnLive = new ToolStripButton("⏵ Live") { CheckOnClick = true, ToolTipText = "Follow the newest data" };
+        readonly ToolStripButton btnLive = new ToolStripButton("⏵ Live") { ToolTipText = "Jump to the newest data and keep following it (clears the selection)" };
         readonly ToolStripComboBox cmbWindow = new ToolStripComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AutoSize = false, Width = 90 };
         readonly ToolStripComboBox cmbInterval = new ToolStripComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AutoSize = false, Width = 60 };
         readonly ToolStripButton btnGpu = new ToolStripButton("GPU") { CheckOnClick = true, Checked = true, ToolTipText = "Collect per-process GPU usage (slightly more expensive)" };
@@ -99,7 +99,8 @@ namespace AppMonitor
             var btnOpen = new ToolStripButton("Open…", null, (s, e) => OpenTraceDialog()) { ToolTipText = "Open a saved trace" };
             var btnSave = new ToolStripButton("Save as…", null, (s, e) => SaveTraceDialog()) { ToolTipText = "Save the trace being viewed" };
             var btnCsv = new ToolStripButton("Export CSV…", null, (s, e) => ExportCsv()) { ToolTipText = "Export the process table below" };
-            btnLive.Click += (s, e) => GoLive(btnLive.Checked);
+            // not a toggle: pressing Live always goes live (pausing happens by panning, scrolling or selecting)
+            btnLive.Click += (s, e) => GoLive(true);
 
             foreach (var w in Windows) cmbWindow.Items.Add(w.label);
             cmbWindow.SelectedIndex = 2;
