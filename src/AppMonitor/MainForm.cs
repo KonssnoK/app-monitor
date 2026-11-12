@@ -732,5 +732,24 @@ namespace AppMonitor
             HideSelection = false;
             DoubleBuffered = true;
         }
+
+        // Only used in dark mode (OwnerDraw is switched on by Theme): custom headers, rows drawn by Windows as usual.
+        protected override void OnDrawColumnHeader(DrawListViewColumnHeaderEventArgs e)
+        {
+            var c = Theme.C;
+            using (var bg = new SolidBrush(c.Control)) e.Graphics.FillRectangle(bg, e.Bounds);
+            using (var line = new Pen(c.Border))
+            {
+                e.Graphics.DrawLine(line, e.Bounds.Right - 1, e.Bounds.Top + 3, e.Bounds.Right - 1, e.Bounds.Bottom - 4);
+                e.Graphics.DrawLine(line, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+            }
+            var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix
+                      | (e.Header.TextAlign == HorizontalAlignment.Right ? TextFormatFlags.Right : TextFormatFlags.Left);
+            var r = Rectangle.Inflate(e.Bounds, -5, 0);
+            TextRenderer.DrawText(e.Graphics, e.Header.Text, Font, r, c.ControlText, flags);
+        }
+
+        protected override void OnDrawItem(DrawListViewItemEventArgs e) => e.DrawDefault = true;
+        protected override void OnDrawSubItem(DrawListViewSubItemEventArgs e) => e.DrawDefault = true;
     }
 }

@@ -120,6 +120,8 @@ namespace AppMonitor
             {
                 case ListView lv:
                     lv.BackColor = c.Window; lv.ForeColor = c.WindowText;
+                    // the dark header theme keeps dark text on some Windows builds: draw headers ourselves in dark mode
+                    if (lv.View == View.Details) lv.OwnerDraw = IsDark;
                     if (lv.IsHandleCreated) ThemeListView(lv); else lv.HandleCreated += (s, e) => ThemeListView((ListView)s);
                     break;
                 case TextBox _:
