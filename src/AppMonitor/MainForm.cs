@@ -23,7 +23,7 @@ namespace AppMonitor
         // toolbar
         readonly ToolStrip tools = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Padding = new Padding(6, 2, 6, 2), ImageScalingSize = new Size(1, 1) };
         readonly ToolStripButton btnRecord = new ToolStripButton("● Record") { ToolTipText = "Start/stop recording (auto-saved to the traces folder)" };
-        readonly ToolStripButton btnLive = new ToolStripButton("⏵ Live") { CheckOnClick = true, ToolTipText = "Follow the newest data" };
+        readonly ToolStripButton btnLive = new ToolStripButton("⏵ Live") { ToolTipText = "Jump to the newest data and keep following it (clears the selection)" };
         readonly ToolStripComboBox cmbWindow = new ToolStripComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AutoSize = false, Width = 90 };
         readonly ToolStripComboBox cmbInterval = new ToolStripComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AutoSize = false, Width = 60 };
         readonly ToolStripButton btnGpu = new ToolStripButton("GPU") { CheckOnClick = true, Checked = true, ToolTipText = "Collect per-process GPU usage (slightly more expensive)" };
@@ -49,6 +49,7 @@ namespace AppMonitor
         readonly Timer debounce = new Timer { Interval = 250 };
         int lastVersion = -1, tick, lastTableTick, lastEpisodeTick;
         string episodesSig = "";
+        bool refreshingEpisodes;
         List<ProcStat> tableData = new List<ProcStat>();
         int sortCol = 3; bool sortDesc = true;
 
@@ -99,7 +100,8 @@ namespace AppMonitor
             var btnOpen = new ToolStripButton("Open…", null, (s, e) => OpenTraceDialog()) { ToolTipText = "Open a saved trace" };
             var btnSave = new ToolStripButton("Save as…", null, (s, e) => SaveTraceDialog()) { ToolTipText = "Save the trace being viewed" };
             var btnCsv = new ToolStripButton("Export CSV…", null, (s, e) => ExportCsv()) { ToolTipText = "Export the process table below" };
-            btnLive.Click += (s, e) => GoLive(btnLive.Checked);
+            // not a toggle: pressing Live always goes live (pausing happens by panning, scrolling or selecting)
+            btnLive.Click += (s, e) => GoLive(true);
 
             foreach (var w in Windows) cmbWindow.Items.Add(w.label);
             cmbWindow.SelectedIndex = 2;
@@ -147,6 +149,7 @@ namespace AppMonitor
             episodesList.ShowItemToolTips = true;
             episodesList.SelectedIndexChanged += (s, e) =>
             {
+                if (refreshingEpisodes) return; // list rebuilt by the timer, not clicked by the user
                 if (episodesList.SelectedItems.Count == 0 || !(episodesList.SelectedItems[0].Tag is Episode ep)) return;
                 timeline.ShowRange(ep.Start, ep.End);
                 timeline.Select(ep.Start, ep.End);
@@ -204,7 +207,18 @@ namespace AppMonitor
                 Dock = DockStyle.Bottom, Height = Font.Height + 6, ForeColor = Color.DimGray, Padding = new Padding(6, 2, 0, 0),
                 Text = "Wheel: zoom · Drag: select a range · Click: one moment · Right-drag: pan · Bottom strip: jump · Esc or double-click: clear selection · Click a process below to highlight it",
             };
-            var right = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 6 };
+            // charts above, process table below; the bar between them is visible and draggable
+            var right = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 8, BackColor = Color.FromArgb(0xD8, 0xDB, 0xE0) };
+            right.Panel1.BackColor = right.Panel2.BackColor = SystemColors.Control;
+            right.Paint += (s, e) =>
+            {
+                var r = right.SplitterRectangle;
+                using var b = new SolidBrush(Color.FromArgb(0x8A, 0x90, 0x98));
+                for (int k = -3; k <= 3; k++) e.Graphics.FillEllipse(b, r.Left + r.Width / 2 + k * 8 - 1.5f, r.Top + r.Height / 2f - 1.5f, 3, 3);
+            };
+            right.SplitterMoved += (s, e) => { right.Invalidate(); if (layoutReady) SaveSetting("ChartSplit", right.SplitterDistance / (double)Math.Max(1, right.Height)); };
+            timeline.SwimFractionChanged += (s, e) => SaveSetting("SwimFraction", timeline.SwimFraction);
+            timeline.SwimFraction = (float)LoadSetting("SwimFraction", 0.40, 0.08, 0.85);
             right.Panel1.Controls.Add(timeline);
             right.Panel1.Controls.Add(hint);
             right.Panel2.Controls.Add(bottom);
@@ -223,8 +237,34 @@ namespace AppMonitor
             Load += (s, e) =>
             {
                 main.SplitterDistance = 340;
-                right.SplitterDistance = (int)(right.Height * 0.64);
+                right.SplitterDistance = (int)(right.Height * LoadSetting("ChartSplit", 0.64, 0.2, 0.92));
+                layoutReady = true;
             };
+        }
+
+        bool layoutReady;
+        const string SettingsKey = @"Software\AppMonitor";
+
+        static double LoadSetting(string name, double def, double min, double max)
+        {
+            try
+            {
+                using var k = Registry.CurrentUser.OpenSubKey(SettingsKey);
+                if (k?.GetValue(name) is string s && double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
+                    return Math.Max(min, Math.Min(max, v));
+            }
+            catch { }
+            return def;
+        }
+
+        static void SaveSetting(string name, double value)
+        {
+            try
+            {
+                using var k = Registry.CurrentUser.CreateSubKey(SettingsKey);
+                k.SetValue(name, value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            catch { }
         }
 
         void BuildTray()
@@ -293,6 +333,8 @@ namespace AppMonitor
             {
                 if (timeline.Trace != liveTrace) ShowTrace(liveTrace);
                 timeline.ClearSelection();
+                refreshingEpisodes = true; // un-highlight the busy period without jumping to it
+                try { episodesList.SelectedItems.Clear(); } finally { refreshingEpisodes = false; }
                 timeline.Follow = collector.Running;
                 timeline.SetWindow(Windows[cmbWindow.SelectedIndex].ticks);
             }
@@ -436,6 +478,12 @@ namespace AppMonitor
             if (sig == episodesSig) return;
             episodesSig = sig;
             long? selected = episodesList.SelectedItems.Count > 0 ? (episodesList.SelectedItems[0].Tag as Episode)?.Start : null;
+            refreshingEpisodes = true;
+            try { FillEpisodes(eps, selected); } finally { refreshingEpisodes = false; }
+        }
+
+        void FillEpisodes(List<Episode> eps, long? selected)
+        {
             episodesList.BeginUpdate();
             episodesList.Items.Clear();
             foreach (var ep in eps.Take(1000))
