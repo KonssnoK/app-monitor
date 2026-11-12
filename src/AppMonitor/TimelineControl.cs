@@ -22,11 +22,12 @@ namespace AppMonitor
             Color.FromArgb(0x76, 0xB7, 0xB2), Color.FromArgb(0x59, 0xA1, 0x4F), Color.FromArgb(0xED, 0xC9, 0x48),
             Color.FromArgb(0xB0, 0x7A, 0xA1), Color.FromArgb(0xFF, 0x9D, 0xA7),
         };
-        static readonly Color OtherColor = Color.FromArgb(0xD5, 0xD8, 0xDC);
-        static readonly Color Ink = Color.FromArgb(0x30, 0x34, 0x3A);
-        static readonly Color Muted = Color.FromArgb(0x80, 0x86, 0x8E);
-        static readonly Color Grid = Color.FromArgb(0xEC, 0xEE, 0xF0);
-        static readonly Color LaneBg = Color.FromArgb(0xFB, 0xFB, 0xFC);
+        // theme-dependent colours (see Theme.cs)
+        static Color OtherColor => Theme.C.Other;
+        static Color Ink => Theme.C.Ink;
+        static Color Muted => Theme.C.Muted;
+        static Color Grid => Theme.C.Grid;
+        static Color LaneBg => Theme.C.LaneBg;
         static readonly Color HiColor = Color.FromArgb(0xD0, 0x10, 0x60);
 
         Trace trace;
@@ -53,10 +54,17 @@ namespace AppMonitor
         int dragX; long dragT, dragViewStart, grabOffset;
         long ovStart, ovEnd;
 
+        /// <summary>Called when the light/dark theme changes.</summary>
+        public void ThemeChanged()
+        {
+            BackColor = Theme.C.ChartBg;
+            dirty = true; Invalidate();
+        }
+
         public TimelineControl()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-            BackColor = Color.White;
+            BackColor = Theme.C.ChartBg;
         }
 
         public Trace Trace
@@ -451,7 +459,7 @@ namespace AppMonitor
                     break;
                 case Lane.Clock:
                     max = Math.Max(150, NiceMax(MaxOf(f.Clock, f.N), 50)); title = "CPU clock (% of base — >100 = turbo, heat)"; unitMax = $"{max:0}%";
-                    using (var p = new Pen(Color.FromArgb(0xC0, 0xC4, 0xCA)) { DashStyle = DashStyle.Dash })
+                    using (var p = new Pen(Theme.C.RefLine) { DashStyle = DashStyle.Dash })
                     { float y = r.Bottom - 100 / max * r.Height; g.DrawLine(p, r.Left, y, r.Right, y); }
                     DrawLine(g, r, f, f.Clock, max, Palette[5], 1.4f);
                     break;
@@ -489,7 +497,7 @@ namespace AppMonitor
             {
                 var sz = TextRenderer.MeasureText(text, Font);
                 if (x + sz.Width + 14 > r.Right) break;
-                using (var wash = new SolidBrush(Color.FromArgb(200, 255, 255, 255))) g.FillRectangle(wash, x, y0, sz.Width + 12, sz.Height);
+                using (var wash = new SolidBrush(Theme.C.LegendWash)) g.FillRectangle(wash, x, y0, sz.Width + 12, sz.Height);
                 using (var b = new SolidBrush(c)) g.FillRectangle(b, x + 1, y0 + sz.Height / 2 - 4, 8, 8);
                 DrawText(g, text, Font, new Point(x + 10, y0), Ink);
                 x += sz.Width + 16;
@@ -586,7 +594,7 @@ namespace AppMonitor
             for (int i = 0; i < f.N; i++) next[i] = Math.Max(cum[i], total[i]);
             using (var b = new SolidBrush(OtherColor)) FillBetween(g, r, f, cum, next, max, b);
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            DrawLine(g, r, f, total, max, Color.FromArgb(0x55, 0x5B, 0x63), 1f);
+            DrawLine(g, r, f, total, max, Theme.C.Total, 1f);
         }
 
         void FillBetween(Graphics g, Rectangle r, Frame f, float[] lo, float[] hi, float max, Brush b)
@@ -613,7 +621,7 @@ namespace AppMonitor
         {
             if (f.N == 0) return;
             var zero = new float[f.N];
-            using (var b = new SolidBrush(Color.FromArgb(90, c))) FillBetween(g, r, f, zero, v, max, b);
+            using (var b = new SolidBrush(Color.FromArgb(Theme.C.AreaAlpha, c))) FillBetween(g, r, f, zero, v, max, b);
             DrawLine(g, r, f, v, max, c, 1.2f);
         }
 
@@ -638,8 +646,8 @@ namespace AppMonitor
             rows.Clear();
             using var bold = new Font(Font, FontStyle.Bold);
             // divider between system graphs and processes: a line with a grip, draggable up/down
-            using (var dp = new Pen(Color.FromArgb(0xC8, 0xCC, 0xD2))) g.DrawLine(dp, 0, divider.Top + 2, Width, divider.Top + 2);
-            using (var gb = new SolidBrush(Color.FromArgb(0x9A, 0xA0, 0xA8)))
+            using (var dp = new Pen(Theme.C.Divider)) g.DrawLine(dp, 0, divider.Top + 2, Width, divider.Top + 2);
+            using (var gb = new SolidBrush(Theme.C.DividerGrip))
                 for (int k = -2; k <= 2; k++) g.FillEllipse(gb, plot.Left + plot.Width / 2 + k * 7 - 1.5f, divider.Top + 0.5f, 3, 3);
             DrawText(g, "Processes", bold, new Point(8, swim.Top - bold.Height - 3), Ink);
             DrawText(g, "one lane per process, busiest first · darker/taller = more CPU or GPU · click a lane to highlight it · drag this line to resize",
@@ -659,7 +667,7 @@ namespace AppMonitor
                 string name = f.RowNames[k];
                 rows.Add((name, r));
                 bool hi = name == HighlightName;
-                using (var bg = new SolidBrush(hi ? Color.FromArgb(0xFC, 0xEE, 0xF3) : (k % 2 == 0 ? LaneBg : Color.White)))
+                using (var bg = new SolidBrush(hi ? Theme.C.LaneHighlight : (k % 2 == 0 ? LaneBg : Theme.C.LaneAlt)))
                     g.FillRectangle(bg, 0, r.Top, Width, r.Height);
 
                 string baseName = name.Split(' ')[0];
@@ -692,12 +700,12 @@ namespace AppMonitor
         void DrawOverview(Graphics g, float[] ov)
         {
             using (var bg = new SolidBrush(LaneBg)) g.FillRectangle(bg, overview);
-            using (var b = new SolidBrush(Color.FromArgb(0xA8, 0xB8, 0xCC)))
+            using (var b = new SolidBrush(Theme.C.OverviewBars))
                 for (int i = 0; i < ov.Length; i++)
                     if (ov[i] > 0) { float h = ov[i] / 100f * (overview.Height - 2); g.FillRectangle(b, overview.Left + i, overview.Bottom - h, 1, h); }
             float x0 = Math.Max(overview.Left, OvX(ViewStart)), x1 = Math.Min(overview.Right - 1, OvX(ViewEnd));
-            using (var v = new SolidBrush(Color.FromArgb(45, 0x4E, 0x79, 0xA7))) g.FillRectangle(v, x0, overview.Top, Math.Max(3, x1 - x0), overview.Height);
-            using (var p = new Pen(Color.FromArgb(0x4E, 0x79, 0xA7), 2)) g.DrawRectangle(p, x0, overview.Top + 1, Math.Max(3, x1 - x0), overview.Height - 2);
+            using (var v = new SolidBrush(Color.FromArgb(45, Theme.C.Accent))) g.FillRectangle(v, x0, overview.Top, Math.Max(3, x1 - x0), overview.Height);
+            using (var p = new Pen(Theme.C.Accent, 2)) g.DrawRectangle(p, x0, overview.Top + 1, Math.Max(3, x1 - x0), overview.Height - 2);
 
             // labels: what this is, and the time span it covers
             using var bold = new Font(Font, FontStyle.Bold);
@@ -743,9 +751,9 @@ namespace AppMonitor
                 float a = Math.Max(plot.Left, X(SelStart)), b = Math.Min(plot.Right, X(SelEnd));
                 if (b > a)
                 {
-                    using var sb = new SolidBrush(Color.FromArgb(50, 0x4E, 0x79, 0xA7));
+                    using var sb = new SolidBrush(Color.FromArgb(Theme.C.SelectionAlpha, Theme.C.Accent));
                     g.FillRectangle(sb, a, plot.Top, Math.Max(1.5f, b - a), plot.Height);
-                    using var sp = new Pen(Color.FromArgb(140, 0x4E, 0x79, 0xA7));
+                    using var sp = new Pen(Color.FromArgb(140, Theme.C.Accent));
                     g.DrawLine(sp, a, plot.Top, a, plot.Bottom); g.DrawLine(sp, b, plot.Top, b, plot.Bottom);
                 }
             }
@@ -755,13 +763,13 @@ namespace AppMonitor
                 const string msg = "⏸ Paused on history: press ⏵ Live, or drag the box to the right end, to follow again";
                 var sz = g.MeasureString(msg, Font);
                 var box = new RectangleF(plot.Right - sz.Width - 10, 1, sz.Width + 8, sz.Height + 2);
-                using (var bb = new SolidBrush(Color.FromArgb(0xFF, 0xF4, 0xCE))) g.FillRectangle(bb, box);
-                using (var tb = new SolidBrush(Color.FromArgb(0x7A, 0x5B, 0x00))) g.DrawString(msg, Font, tb, box.X + 4, box.Y + 1);
+                using (var bb = new SolidBrush(Theme.C.BannerBg)) g.FillRectangle(bb, box);
+                using (var tb = new SolidBrush(Theme.C.BannerInk)) g.DrawString(msg, Font, tb, box.X + 4, box.Y + 1);
             }
 
             if (plot.Contains(mouse) && drag != Drag.Pan)
             {
-                using var cp = new Pen(Color.FromArgb(120, Ink)) { DashStyle = DashStyle.Dot };
+                using var cp = new Pen(Theme.C.Cursor) { DashStyle = DashStyle.Dot };
                 g.DrawLine(cp, mouse.X, plot.Top, mouse.X, plot.Bottom);
                 if (drag == Drag.None) DrawTooltip(g);
             }
@@ -828,9 +836,9 @@ namespace AppMonitor
             if (box.Right > Width - 2) box.X = mouse.X - 14 - box.Width;
             if (box.Bottom > Height - 2) box.Y = Math.Max(2, Height - 2 - box.Height);
             if (box.X < 2) box.X = 2;
-            using (var sh = new SolidBrush(Color.FromArgb(40, 0, 0, 0))) g.FillRectangle(sh, box.X + 2, box.Y + 2, box.Width, box.Height);
-            using (var bg = new SolidBrush(Color.FromArgb(250, 255, 255, 255))) g.FillRectangle(bg, box);
-            using (var bp = new Pen(Color.FromArgb(0xC8, 0xCC, 0xD2))) g.DrawRectangle(bp, box);
+            using (var sh = new SolidBrush(Theme.C.TipShadow)) g.FillRectangle(sh, box.X + 2, box.Y + 2, box.Width, box.Height);
+            using (var bg = new SolidBrush(Theme.C.TipBg)) g.FillRectangle(bg, box);
+            using (var bp = new Pen(Theme.C.TipBorder)) g.DrawRectangle(bp, box);
             int y = box.Y + 5;
             foreach (var (text, b) in lines)
             {

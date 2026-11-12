@@ -17,6 +17,7 @@ It runs in the tray and records CPU, GPU, disk, memory, network, CPU clock boost
   - Recording streams to `traces\trace_<date>.amtrace` next to the exe, in crash-safe compressed chunks.
   - Use **Open…** to load old traces and **Save as…** to copy one. **Export CSV…** exports the table.
 - **Portable**: a single `AppMonitor.exe` (~3 MB, libraries embedded) for .NET Framework 4.8, which ships with Windows 10/11. No install is needed.
+- **Dark theme**: follows the Windows light/dark app setting by default. **More → Theme** switches to Light or Dark explicitly.
 - **Light on resources**:
   - One kernel call per sample collects data for every process.
   - Per-process details are looked up once per process, and only for processes that matter.
