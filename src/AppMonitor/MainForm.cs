@@ -42,7 +42,10 @@ namespace AppMonitor
         // status
         readonly ToolStripStatusLabel lblState = new ToolStripStatusLabel { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
         readonly ToolStripStatusLabel lblOverhead = new ToolStripStatusLabel();
-        readonly ToolStripStatusLabel lblSensors = new ToolStripStatusLabel { ForeColor = Color.DimGray };
+        readonly ToolStripStatusLabel lblSensors = new ToolStripStatusLabel();
+        Label hint;
+        readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
+        readonly StatusStrip status = new StatusStrip { SizingGrip = true, RenderMode = ToolStripRenderMode.ManagerRenderMode };
 
         readonly NotifyIcon tray = new NotifyIcon();
         readonly Timer uiTimer = new Timer { Interval = 1000 };
@@ -73,6 +76,12 @@ namespace AppMonitor
             BuildToolbar();
             BuildLayout();
             BuildTray();
+
+            // light/dark theme: saved choice, default follows Windows; re-applied live when either changes
+            Theme.Changed += OnThemeChanged;
+            Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+            HandleCreated += (s, e) => Theme.ApplyTitleBar(this);
+            Theme.Set((ThemeMode)(int)LoadSetting("Theme", 0, 0, 2));
 
             collector.Error += ex => BeginInvoke((Action)(() => { SetRecordingUi(); MessageBox.Show(this, "Recording stopped: " + ex.Message, "AppMonitor", MessageBoxButtons.OK, MessageBoxIcon.Error); }));
             timeline.SelectionChanged += (s, e) => { debounce.Stop(); debounce.Start(); };
@@ -127,6 +136,15 @@ namespace AppMonitor
             });
             if (!IsElevated())
                 more.DropDownItems.Add("Restart as administrator (shows users/command lines of system processes)", null, (s, e) => RestartElevated());
+            var theme = new ToolStripMenuItem("Theme");
+            foreach (var (label, mode) in new[] { ("Follow Windows", ThemeMode.System), ("Light", ThemeMode.Light), ("Dark", ThemeMode.Dark) })
+            {
+                var item = new ToolStripMenuItem(label) { Tag = mode };
+                item.Click += (s, e) => { SaveSetting("Theme", (int)mode); Theme.Set(mode); };
+                theme.DropDownItems.Add(item);
+            }
+            theme.DropDownOpening += (s, e) => { foreach (ToolStripMenuItem it in theme.DropDownItems) it.Checked = (ThemeMode)it.Tag == Theme.Mode; };
+            more.DropDownItems.Add(theme);
             more.DropDownItems.Add(new ToolStripSeparator());
             more.DropDownItems.Add("Exit", null, (s, e) => ExitApp());
 
@@ -202,18 +220,17 @@ namespace AppMonitor
             bottom.Controls.Add(table);
             bottom.Controls.Add(tableBar);
 
-            var hint = new Label
+            hint = new Label
             {
-                Dock = DockStyle.Bottom, Height = Font.Height + 6, ForeColor = Color.DimGray, Padding = new Padding(6, 2, 0, 0),
+                Dock = DockStyle.Bottom, Height = Font.Height + 6, Padding = new Padding(6, 2, 0, 0),
                 Text = "Wheel: zoom · Drag: select a range · Click: one moment · Right-drag: pan · Bottom strip: jump · Esc or double-click: clear selection · Click a process below to highlight it",
             };
             // charts above, process table below; the bar between them is visible and draggable
-            var right = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 8, BackColor = Color.FromArgb(0xD8, 0xDB, 0xE0) };
-            right.Panel1.BackColor = right.Panel2.BackColor = SystemColors.Control;
+            var right = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 8 };
             right.Paint += (s, e) =>
             {
                 var r = right.SplitterRectangle;
-                using var b = new SolidBrush(Color.FromArgb(0x8A, 0x90, 0x98));
+                using var b = new SolidBrush(Theme.C.Grip);
                 for (int k = -3; k <= 3; k++) e.Graphics.FillEllipse(b, r.Left + r.Width / 2 + k * 8 - 1.5f, r.Top + r.Height / 2f - 1.5f, 3, 3);
             };
             right.SplitterMoved += (s, e) => { right.Invalidate(); if (layoutReady) SaveSetting("ChartSplit", right.SplitterDistance / (double)Math.Max(1, right.Height)); };
@@ -227,7 +244,6 @@ namespace AppMonitor
             main.Panel1.Controls.Add(left);
             main.Panel2.Controls.Add(right);
 
-            var status = new StatusStrip { SizingGrip = true };
             status.Items.AddRange(new ToolStripItem[] { lblState, lblSensors, lblOverhead });
 
             Controls.Add(main);
@@ -272,7 +288,7 @@ namespace AppMonitor
             tray.Icon = MakeIcon(false);
             tray.Text = "AppMonitor";
             tray.Visible = true;
-            var menu = new ContextMenuStrip();
+            var menu = trayMenu;
             menu.Items.Add("Show", null, (s, e) => ShowFromTray());
             var rec = new ToolStripMenuItem("Record");
             rec.Click += (s, e) => { if (collector.Running) StopRecording(); else StartRecording(); };
@@ -320,7 +336,7 @@ namespace AppMonitor
         {
             bool rec = collector.Running;
             btnRecord.Text = rec ? "■ Stop" : "● Record";
-            btnRecord.ForeColor = rec ? Color.FromArgb(0xC0, 0x20, 0x20) : SystemColors.ControlText;
+            btnRecord.ForeColor = rec ? Theme.C.RecordText : Theme.C.ControlText;
             cmbInterval.Enabled = true;
             var old = tray.Icon; tray.Icon = MakeIcon(rec); old?.Dispose();
             tray.Text = rec ? "AppMonitor — recording" : "AppMonitor — stopped";
@@ -680,9 +696,28 @@ namespace AppMonitor
             return icon;
         }
 
+        void OnThemeChanged(object sender, EventArgs e)
+        {
+            if (InvokeRequired) { BeginInvoke((Action)(() => OnThemeChanged(sender, e))); return; }
+            SuspendLayout();
+            Theme.Apply(this);
+            Theme.Apply(trayMenu);
+            hint.ForeColor = Theme.C.HintText;
+            lblSensors.ForeColor = Theme.C.HintText;
+            foreach (Control c in Controls) if (c is SplitContainer sc) sc.Invalidate(true);
+            ResumeLayout();
+            SetRecordingUi();
+            Theme.ApplyTitleBar(this);
+        }
+
+        void OnUserPreferenceChanged(object sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+        {
+            if (e.Category == Microsoft.Win32.UserPreferenceCategory.General) Theme.SystemSettingChanged();
+        }
+
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { collector.Dispose(); tray.Dispose(); uiTimer.Dispose(); debounce.Dispose(); }
+            if (disposing) { Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged; Theme.Changed -= OnThemeChanged; collector.Dispose(); tray.Dispose(); uiTimer.Dispose(); debounce.Dispose(); }
             base.Dispose(disposing);
         }
     }
@@ -697,5 +732,24 @@ namespace AppMonitor
             HideSelection = false;
             DoubleBuffered = true;
         }
+
+        // Only used in dark mode (OwnerDraw is switched on by Theme): custom headers, rows drawn by Windows as usual.
+        protected override void OnDrawColumnHeader(DrawListViewColumnHeaderEventArgs e)
+        {
+            var c = Theme.C;
+            using (var bg = new SolidBrush(c.Control)) e.Graphics.FillRectangle(bg, e.Bounds);
+            using (var line = new Pen(c.Border))
+            {
+                e.Graphics.DrawLine(line, e.Bounds.Right - 1, e.Bounds.Top + 3, e.Bounds.Right - 1, e.Bounds.Bottom - 4);
+                e.Graphics.DrawLine(line, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+            }
+            var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix
+                      | (e.Header.TextAlign == HorizontalAlignment.Right ? TextFormatFlags.Right : TextFormatFlags.Left);
+            var r = Rectangle.Inflate(e.Bounds, -5, 0);
+            TextRenderer.DrawText(e.Graphics, e.Header.Text, Font, r, c.ControlText, flags);
+        }
+
+        protected override void OnDrawItem(DrawListViewItemEventArgs e) => e.DrawDefault = true;
+        protected override void OnDrawSubItem(DrawListViewSubItemEventArgs e) => e.DrawDefault = true;
     }
 }
