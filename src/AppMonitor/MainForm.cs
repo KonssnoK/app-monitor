@@ -65,7 +65,7 @@ namespace AppMonitor
 
         public MainForm(string[] args)
         {
-            Text = "AppMonitor";
+            Text = "AppMonitor " + AppVersion;
             Font = SystemFonts.MessageBoxFont;
             Size = new Size(1360, 860);
             MinimumSize = new Size(900, 560);
@@ -146,6 +146,15 @@ namespace AppMonitor
             theme.DropDownOpening += (s, e) => { foreach (ToolStripMenuItem it in theme.DropDownItems) it.Checked = (ThemeMode)it.Tag == Theme.Mode; };
             more.DropDownItems.Add(theme);
             more.DropDownItems.Add(new ToolStripSeparator());
+            more.DropDownItems.Add("About AppMonitor…", null, (s, e) =>
+            {
+                if (MessageBox.Show(this, $"AppMonitor {AppVersion}\n\nLightweight portable resource recorder.\n" +
+                    "Copyright (c) 2026 KonssnoK. MIT License.\n\n" +
+                    "Includes LibreHardwareMonitor and other open-source libraries (MPL-2.0, Apache-2.0, MIT); " +
+                    "see THIRD-PARTY-NOTICES.txt in the repository.\n\n" + RepoUrl + "\n\nOpen the project page?",
+                    "About AppMonitor", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                    Process.Start(new ProcessStartInfo(RepoUrl) { UseShellExecute = true });
+            });
             more.DropDownItems.Add("Exit", null, (s, e) => ExitApp());
 
             tools.Items.AddRange(new ToolStripItem[]
@@ -256,6 +265,19 @@ namespace AppMonitor
                 right.SplitterDistance = (int)(right.Height * LoadSetting("ChartSplit", 0.64, 0.2, 0.92));
                 layoutReady = true;
             };
+        }
+
+        const string RepoUrl = "https://github.com/KonssnoK/app-monitor";
+
+        /// <summary>Version stamped at build time (from the git tag for releases), e.g. "1.0.0".</summary>
+        static string AppVersion
+        {
+            get
+            {
+                string v = Application.ProductVersion; // AssemblyInformationalVersion
+                int plus = v.IndexOf('+');
+                return plus > 0 ? v.Substring(0, plus) : v;
+            }
         }
 
         bool layoutReady;
