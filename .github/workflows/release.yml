@@ -1,0 +1,62 @@
+# Builds AppMonitor.exe and publishes a GitHub release when a version tag is pushed.
+#   git tag v1.0.0 && git push origin v1.0.0
+# The tag (without the "v") becomes the exe's version. Tags with a suffix (v1.1.0-beta.1) are marked as pre-releases.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write   # create the release and upload files
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Version from tag
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          if ($v -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.\-]+)?$') { throw "Tag '${{ github.ref_name }}' is not vX.Y.Z" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "numeric=$($v.Split('-')[0])" >> $env:GITHUB_OUTPUT
+          "prerelease=$(if ($v.Contains('-')) { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
+
+      - name: Build
+        shell: pwsh
+        run: >
+          dotnet build src/AppMonitor -c Release -o out
+          -p:Version=${{ steps.ver.outputs.version }}
+          -p:FileVersion=${{ steps.ver.outputs.numeric }}.0
+          -p:AssemblyVersion=${{ steps.ver.outputs.numeric }}.0
+
+      - name: Check and package
+        shell: pwsh
+        run: |
+          $exe = Get-Item out/AppMonitor.exe
+          $info = $exe.VersionInfo
+          Write-Host "ProductVersion=$($info.ProductVersion) FileVersion=$($info.FileVersion) Size=$($exe.Length)"
+          if ($info.ProductVersion -ne '${{ steps.ver.outputs.version }}') { throw "Version stamp mismatch: $($info.ProductVersion)" }
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item $exe dist/AppMonitor.exe
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.txt dist/
+          $hash = (Get-FileHash dist/AppMonitor.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  AppMonitor.exe" | Out-File -Encoding ascii dist/AppMonitor.exe.sha256
+          Write-Host "SHA256 $hash"
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $flags = @('--generate-notes', '--title', 'AppMonitor ${{ steps.ver.outputs.version }}')
+          if ('${{ steps.ver.outputs.prerelease }}' -eq 'true') { $flags += '--prerelease' }
+          gh release create '${{ github.ref_name }}' dist/AppMonitor.exe dist/AppMonitor.exe.sha256 dist/LICENSE dist/THIRD-PARTY-NOTICES.txt @flags

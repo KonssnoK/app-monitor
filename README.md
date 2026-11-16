@@ -4,6 +4,18 @@ A portable, lightweight Windows resource recorder for catching **what made the f
 
 It runs in the tray and records CPU, GPU, disk, memory, network, CPU clock boost, and temperature. For each sample it also records which process (and which user) was using them. It builds a timeline you can search back through later, so you no longer have to open Task Manager after the spike has already ended.
 
+## Download
+
+Get `AppMonitor.exe` from the [latest release](https://github.com/KonssnoK/app-monitor/releases/latest). Put it in any folder and run it; there's nothing to install. Requirements: Windows 10 or 11, 64-bit.
+
+- **"Windows protected your PC"**: the exe isn't code-signed yet, so SmartScreen warns on first run. Click **More info → Run anyway**.
+- **Verify the download**: compare the exe's hash with the `AppMonitor.exe.sha256` file in the release.
+
+  ```powershell
+  Get-FileHash AppMonitor.exe -Algorithm SHA256
+  ```
+- **Keep it in its own folder**: recordings are saved in a `traces` folder next to the exe.
+
 ## Features
 
 - **Tracealyzer-style timeline**:
@@ -54,10 +66,16 @@ Windows has no standard fan-speed API. The app reads fan speeds and temperatures
 - Drivers installed by vendor tools such as Gigabyte Control Center can't be used instead.
 - See **[docs/sensors.md](docs/sensors.md)** for details: what PawnIO is, uninstalling it, how fans are chosen, and running alongside vendor tools.
 
-## Third-party components
+## License
 
-- [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0): embedded in the exe. Reads fan speeds and temperatures.
-- [PawnIO](https://pawnio.eu) ([source](https://github.com/namazso/PawnIO)): not bundled. It's the optional driver LibreHardwareMonitor uses for motherboard and CPU sensors.
+AppMonitor is released under the [MIT License](LICENSE).
+
+The exe embeds unmodified open-source libraries under their own licenses. [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) has the full list. The main ones:
+
+- [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0) reads fan speeds and temperatures.
+- Its helper libraries are under MPL-2.0, Apache-2.0 and MIT.
+
+[PawnIO](https://pawnio.eu) ([source](https://github.com/namazso/PawnIO)) is not bundled. It's the optional driver LibreHardwareMonitor uses for motherboard and CPU sensors.
 
 ## Build
 
@@ -68,3 +86,16 @@ dotnet build src/AppMonitor -c Release
 ```
 
 The output is `src/AppMonitor/bin/Release/net48/AppMonitor.exe`. Copy that single file anywhere.
+
+## Releasing
+
+Releases are built by GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml)) when a version tag is pushed:
+
+```
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+- The tag sets the version shown in the title bar, in **More → About** and in the exe's Properties → Details.
+- Version numbers follow `MAJOR.MINOR.PATCH`: bump MINOR for new features and PATCH for fixes. A suffix such as `v1.1.0-beta.1` publishes a pre-release.
+- The workflow attaches `AppMonitor.exe`, its SHA-256 checksum, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, and drafts release notes from the commits.

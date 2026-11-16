@@ -1,0 +1,53 @@
+AppMonitor
+Third-party components
+
+AppMonitor.exe embeds the unmodified libraries listed below. They are
+distributed under their own licenses, not under AppMonitor's MIT license.
+The full license texts are available at the links given.
+
+--------------------------------------------------------------------------
+Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/)
+--------------------------------------------------------------------------
+Source code for these libraries is available from the repositories below.
+
+LibreHardwareMonitorLib 0.9.6
+  https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
+
+BlackSharp.Core 1.0.7
+  https://github.com/Blacktempel/BlackSharp
+
+DiskInfoToolkit 1.1.2
+  https://github.com/Blacktempel/DiskInfoToolkit
+
+RAMSPDToolkit-NDD 1.4.2
+  https://github.com/Blacktempel/RAMSPDToolkit
+
+--------------------------------------------------------------------------
+Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+--------------------------------------------------------------------------
+HidSharp 2.6.4
+  Copyright 2010-2025 James F. Bellinger
+  https://software.seekye.com/hidsharp
+
+--------------------------------------------------------------------------
+MIT License (https://licenses.nuget.org/MIT)
+--------------------------------------------------------------------------
+Copyright (c) .NET Foundation and Contributors
+
+System.Buffers 4.6.1
+System.CodeDom 10.0.2
+System.Memory 4.6.3
+System.Numerics.Vectors 4.6.1
+System.Runtime.CompilerServices.Unsafe 6.1.2
+System.Security.AccessControl 6.0.0
+System.Security.Principal.Windows 5.0.0
+System.Threading.AccessControl 10.0.3
+  https://github.com/dotnet/runtime
+  https://github.com/dotnet/maintenance-packages
+
+--------------------------------------------------------------------------
+Not included
+--------------------------------------------------------------------------
+PawnIO (https://pawnio.eu), the optional driver used for motherboard and
+CPU sensors, is not part of AppMonitor. It is installed separately by the
+user.

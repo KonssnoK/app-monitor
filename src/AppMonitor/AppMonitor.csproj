@@ -16,7 +16,12 @@
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Product>AppMonitor</Product>
     <Description>Lightweight portable resource recorder</Description>
+    <!-- Default for local builds. Release builds pass -p:Version=X.Y.Z taken from the git tag vX.Y.Z (see .github/workflows/release.yml). -->
     <Version>1.0.0</Version>
+    <Company>KonssnoK</Company>
+    <Copyright>Copyright (c) 2026 KonssnoK. MIT License.</Copyright>
+    <!-- Version shown in the app: plain "1.0.0", without the "+commit" suffix the SDK would append. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- No .exe.config next to the exe: keep it a single portable file. -->
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
